@@ -1,0 +1,96 @@
+# The app's own Postgres, in namespace pr-review. Its password is in the secret
+# `pr-review-db` (key `password`), made on the cluster by deploy.sh and never committed.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pr-review
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: pr-review
+spec:
+  selector: { app: pr-review-postgres }
+  ports: [{ port: 5432, targetPort: pg, name: pg }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: pr-review
+  labels: { app: pr-review-postgres }
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels: { app: pr-review-postgres }
+  template:
+    metadata:
+      labels: { app: pr-review-postgres }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          ports: [{ containerPort: 5432, name: pg }]
+          env:
+            - { name: POSTGRES_USER, value: prreview }
+            - { name: POSTGRES_DB, value: prreview }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: pr-review-db, key: password } }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: run, mountPath: /var/run/postgresql }
+            - { name: tmp, mountPath: /tmp }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 512Mi }
+          readinessProbe:
+            exec: { command: [pg_isready, -U, prreview, -d, prreview] }
+            periodSeconds: 10
+          livenessProbe:
+            exec: { command: [pg_isready, -U, prreview, -d, prreview] }
+            periodSeconds: 30
+            failureThreshold: 6
+      volumes:
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 5Gi
+---
+# Only the app and the backup job may talk to Postgres.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres
+  namespace: pr-review
+spec:
+  podSelector:
+    matchLabels: { app: pr-review-postgres }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: pr-review-app } }
+        - podSelector: { matchLabels: { app: pr-review-backup } }
+      ports: [{ port: 5432, protocol: TCP }]

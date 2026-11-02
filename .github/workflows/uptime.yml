@@ -1,0 +1,30 @@
+# The uptime monitor: from outside the cluster, every 10 minutes, the site must answer its
+# readiness check (the app and its Postgres) and its home page. A failed run is GitHub's alert:
+# it notifies whoever last changed this schedule.
+name: Uptime
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: The site answers
+        run: |
+          set -eu
+          for path in /readyz /; do
+            ok=
+            for attempt in 1 2 3; do
+              if curl -fsS --max-time 20 -o /dev/null "https://pr.chrisjowen.net$path"; then ok=1; break; fi
+              sleep 20
+            done
+            [ -n "$ok" ] || { echo "::error::https://pr.chrisjowen.net$path is down"; exit 1; }
+          done
+          echo "up"
