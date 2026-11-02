@@ -5,7 +5,7 @@
  *   /go?url=…                         any PR URL → its page here
  *   /<owner>/<repo>/pull/<n>          a public PR's reading plan: no AI, no sign-in
  *   /<owner>/<repo>/pull/<n>/review   the guided review, as a chat (signed in; ?view=cards for the card tab)
- *   …/review/file?path=…              one changed file whole at the PR's head, for the review's file drawer
+ *   …/review/file?path=…              one changed file whole at the reviewed head, for the file drawer
  *   …/review/context                  the project as a whole: description, topics, the start of its README
  *   /engine/api/…                     the shared engine's API, for the signed-in user
  *   /signin, /auth/…                  sign in with GitHub (or the local demo login)
@@ -186,7 +186,7 @@ export function createApp({
 		const here = prPath(at);
 		if (suffix === 'review' && at.part) {
 			if (!user) return json(res, 401, { error: 'Sign in to review.' });
-			return reviewPartRoute(res, at, url);
+			return reviewPartRoute(res, user, at, url);
 		}
 		if (suffix === 'review') {
 			if (!user) return redirect(res, `/signin?next=${encodeURIComponent(`${here}/review`)}`);
@@ -248,23 +248,32 @@ export function createApp({
 
 	/**
 	 * What the chat review reads besides the engine: one of the PR's changed
-	 * files whole at its head (`file`), or the project as a whole (`context`).
-	 * Only files the PR changes are read, so this is never a proxy for the rest
-	 * of GitHub.
+	 * files whole at the head the user's review was made at (`file`), so it
+	 * lines up with the review's diff, or the project as a whole (`context`).
+	 * Only files that review changes are read, so this is never a proxy for the
+	 * rest of GitHub.
 	 */
-	async function reviewPartRoute(res, { owner, repo, number, part }, url) {
+	async function reviewPartRoute(res, user, { owner, repo, number, part }, url) {
 		try {
 			if (part === 'context') return json(res, 200, await github.project(owner, repo));
 			const path = url.searchParams.get('path') ?? '';
-			const { pr, diff } = await github.basics(owner, repo, number);
-			if (!filesOf(diff).some((f) => f.path === path))
+			const ctx = await engines.get(user);
+			let kept;
+			try {
+				kept = ctx.reviews.view(`${owner}__${repo}__${number}`);
+			} catch {
+				kept = null;
+			}
+			if (!kept) return json(res, 404, { error: 'Open the review of this pull request first.' });
+			if (!kept.files.some((f) => f.path === path))
 				return json(res, 404, { error: 'That file isn’t part of this pull request.' });
-			const text = await github.file(owner, repo, pr.headSha, path);
+			const sha = kept.pr.headSha;
+			const text = await github.file(owner, repo, sha, path);
 			if (text === null)
 				return json(res, 404, {
 					error: 'That file isn’t there at the PR’s head (it was deleted).'
 				});
-			return json(res, 200, { path, sha: pr.headSha, text });
+			return json(res, 200, { path, sha, text });
 		} catch (e) {
 			const status = e instanceof GitHubError ? e.status : 500;
 			if (status >= 500)

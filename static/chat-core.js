@@ -132,14 +132,18 @@ export const LARGE = { files: 15, lines: 800 };
 /**
  * Whether to offer the project or the story before the changes: on a repo
  * the reviewer hasn't reviewed here before, or on a large PR. A context
- * button is there either way.
+ * button is there either way. Only a review they did something in (decided
+ * a card, or posted it) counts: not one merely opened, nor an untouched demo.
  *
  * @param {any} review the engine's review
- * @param {{ repo: string }[]} others every review kept for this reviewer
+ * @param {{ id: string; repo: string; decided?: number; posted?: unknown }[]} others every review kept for this reviewer
  */
 export function offerContext(review, others = []) {
 	const repo = `${review.pr.owner}/${review.pr.repo}`.toLowerCase();
-	const familiar = others.some((r) => String(r.repo).toLowerCase() === repo && r.id !== review.id);
+	const familiar = others.some(
+		(r) =>
+			String(r.repo).toLowerCase() === repo && r.id !== review.id && (r.decided > 0 || !!r.posted)
+	);
 	const files = review.files?.length ?? 0;
 	const lines = (review.files ?? []).reduce((n, f) => n + (f.add ?? 0) + (f.del ?? 0), 0);
 	const large = files >= LARGE.files || lines >= LARGE.lines;
@@ -148,24 +152,26 @@ export function offerContext(review, others = []) {
 
 /**
  * What a typed line means: a command the chat carries out itself, or a
- * question for the reviewer.
+ * question for the reviewer. Only “accept” accepts; a casual yes (“ok”,
+ * “lgtm”) is `agree`, which the chat confirms before recording anything.
  *
  * @param {string} raw
- * @returns {{ type: 'next' | 'back' | 'accept' | 'disagree' | 'comment' | 'finish' | 'open' | 'goto' | 'context' | 'cancel' | 'ask'; text: string; arg?: string; line?: number }}
+ * @returns {{ type: 'next' | 'back' | 'accept' | 'agree' | 'disagree' | 'comment' | 'finish' | 'open' | 'goto' | 'context' | 'cancel' | 'ask'; text: string; arg?: string; line?: number }}
  */
 export function parseLine(raw) {
 	const text = String(raw ?? '').trim();
 	const t = text.toLowerCase();
 	if (/^(cancel|never ?mind)\b/.test(t)) return { type: 'cancel', text };
-	if (/^(next|continue|go on|move on|skip|n)$/.test(t)) return { type: 'next', text };
+	if (/^(next|continue|go on|move on|skip)$/.test(t)) return { type: 'next', text };
 	if (/^(back|previous|prev|go back)$/.test(t)) return { type: 'back', text };
-	if (/^(accept|accepted|agree|lgtm|looks good|ok|okay|fine|sounds (right|good))[.!]?$/.test(t))
-		return { type: 'accept', text };
+	if (/^accept[.!]?$/.test(t)) return { type: 'accept', text };
+	if (/^(i )?(agree|lgtm|looks good|ok|okay|fine|sounds (right|good))[.!]?$/.test(t))
+		return { type: 'agree', text };
 	const dis = text.match(/^(?:i\s+)?disagree\b[,:.!-]*\s*(?:because\s+)?(.*)$/is);
 	if (dis) return { type: 'disagree', text, arg: dis[1].trim() };
 	const com = text.match(/^comment\b[:\s]*(.*)$/is);
 	if (com) return { type: 'comment', text, arg: com[1].trim() };
-	if (/^(finish|summary|wrap up|done|i'?m done|post (it|the review))[.!]?$/.test(t))
+	if (/^(finish|summary|wrap up|i'?m done|post (it|the review))[.!]?$/.test(t))
 		return { type: 'finish', text };
 	if (/^(context|the project|the story|project context|story)$/.test(t))
 		return { type: 'context', text, arg: /story/.test(t) ? 'story' : 'project' };

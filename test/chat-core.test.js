@@ -118,10 +118,23 @@ describe('when to offer context', () => {
 	const small = { ...review, files: review.files.slice(0, 2) };
 	it('offers it on a repo the reviewer hasn’t reviewed here before', () => {
 		assert.equal(offerContext(small, []).offer, true);
-		assert.equal(offerContext(small, [{ id: small.id, repo: 'chrisjowen/docket' }]).offer, true);
+		assert.equal(
+			offerContext(small, [{ id: small.id, repo: 'chrisjowen/docket', decided: 3 }]).offer,
+			true
+		);
+	});
+	it('doesn’t count a review only opened, or an untouched demo, as reviewing the repo', () => {
+		const opened = [
+			{ id: 'chrisjowen__docket__47', repo: 'chrisjowen/docket', decided: 0, posted: null }
+		];
+		assert.equal(offerContext(small, opened).offer, true);
 	});
 	it('goes straight in on a familiar repo, unless the PR is large', () => {
-		const others = [{ id: 'chrisjowen__docket__47', repo: 'chrisjowen/docket' }];
+		const posted = [
+			{ id: 'chrisjowen__docket__46', repo: 'chrisjowen/docket', decided: 0, posted: { url: 'x' } }
+		];
+		assert.equal(offerContext(small, posted).offer, false);
+		const others = [{ id: 'chrisjowen__docket__47', repo: 'chrisjowen/docket', decided: 2 }];
 		assert.equal(offerContext(small, others).offer, false);
 		const big = offerContext(review, others);
 		assert.equal(big.large, true, '17 files, over a thousand lines');
@@ -135,9 +148,10 @@ describe('what a typed line means', () => {
 			next: 'next',
 			'Go on': 'next',
 			back: 'back',
-			LGTM: 'accept',
-			'accept.': 'accept',
+			accept: 'accept',
+			'Accept.': 'accept',
 			finish: 'finish',
+			"i'm done": 'finish',
 			'wrap up': 'finish',
 			'the story': 'context',
 			'open the file': 'open',
@@ -156,7 +170,13 @@ describe('what a typed line means', () => {
 	it('treats anything else as a question, noting a line number', () => {
 		assert.deepEqual(parseLine('Is it exploitable?'), { type: 'ask', text: 'Is it exploitable?' });
 		assert.equal(parseLine('what does line 59 do?').line, 59);
-		assert.equal(parseLine('ok, but why is this slow?').type, 'ask', 'only a bare “ok” accepts');
+		assert.equal(parseLine('ok, but why is this slow?').type, 'ask');
+	});
+	it('never takes a casual yes, or a bare “done” or “n”, as a decision or a move', () => {
+		for (const text of ['ok', 'Okay', 'fine', 'sounds good', 'looks good', 'agree', 'LGTM!'])
+			assert.equal(parseLine(text).type, 'agree', text);
+		assert.equal(parseLine('done').type, 'ask');
+		assert.equal(parseLine('n').type, 'ask');
 	});
 });
 

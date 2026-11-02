@@ -29,6 +29,7 @@ import {
 	nextUndecided,
 	offerContext,
 	parseLine,
+	partKind,
 	partsOf,
 	readingOrder,
 	takeText,
@@ -461,6 +462,7 @@ async function start() {
 		{ pause: 250 }
 	);
 	if (w.take) await sayText(takeText(w.take), { pause: 300 });
+	if (S.review.posted) return finish();
 	const decided = S.deck.cards.filter((c) => c.decision).length;
 	if (decided) {
 		await sayText(
@@ -883,6 +885,22 @@ async function route(raw) {
 		case 'accept':
 			if (cur) return startDecision(cur, 'accept', line.text);
 			break;
+		case 'agree': {
+			const c = cardOf(cur);
+			if (c && !c.decision) {
+				await me(line.text);
+				return say(
+					`<div class="ctext"><p>${partKind(c.verdict, S.vt) === 'serious' ? 'Accept it, so I ask for it in the review as a <b>blocking</b> change?' : 'Accept it?'} Nothing is recorded until you say so.</p></div>${quick(
+						[
+							['Accept', `accept:${c.id}`, true],
+							['Not yet', 'notyet']
+						]
+					)}`,
+					{ pause: 150, about: c.id }
+				);
+			}
+			break;
+		}
 		case 'disagree':
 			if (cur) {
 				if (line.arg.length > 3) {
@@ -949,12 +967,19 @@ function findTarget(text) {
 
 // ---------- finish: the draft, and posting it ----------
 async function finish() {
-	S.phase = 'finish';
+	S.phase = S.review.posted ? 'posted' : 'finish';
 	S.current = null;
 	S.edited = false;
 	drawNav();
 	updateContext();
 	divider('<b>Finish review</b>');
+	if (S.review.posted) {
+		await say(
+			`<div class="ctext"><p>This review is already posted to GitHub, so there’s nothing more to post.</p></div>${postedHtml()}`,
+			{ pause: 200 }
+		);
+		return drawFollowups();
+	}
 	const open = readingOrder(S.deck).filter((x) => !cardOf(x.id)?.decision);
 	const left = unread();
 	if (left.length)
@@ -1030,14 +1055,22 @@ async function post(btn) {
 	}
 	el.remove();
 	S.phase = 'posted';
-	const done = S.review.posted;
 	await say(
-		`<div class="ccard cposted"><span class="cbadge ${done.event}">${done.event === 'APPROVE' ? '✓' : done.event === 'REQUEST_CHANGES' ? '!' : '…'}</span>
-		<div><b>${VERDICT_LABEL[done.event] ?? 'Review'}</b> posted on <a href="${esc(done.url)}" target="_blank" rel="noopener">${esc(S.review.pr.owner)}/${esc(S.review.pr.repo)}#${S.review.pr.number}</a>${draft.comments.length ? ` with ${draft.comments.length} inline comment${draft.comments.length === 1 ? '' : 's'}` : ''}.
-		${done.note ? `<p class="cdim">${inline(done.note)}</p>` : ''}</div></div>`,
+		postedHtml(
+			draft.comments.length
+				? ` with ${draft.comments.length} inline comment${draft.comments.length === 1 ? '' : 's'}`
+				: ''
+		),
 		{ pause: 150 }
 	);
 	drawFollowups();
+}
+/** The review as posted: its verdict, a link to it on GitHub, and GitHub's note. */
+function postedHtml(extra = '') {
+	const done = S.review.posted;
+	return `<div class="ccard cposted"><span class="cbadge ${esc(done.event)}">${done.event === 'APPROVE' ? '✓' : done.event === 'REQUEST_CHANGES' ? '!' : '…'}</span>
+		<div><b>${VERDICT_LABEL[done.event] ?? 'Review'}</b> posted on <a href="${esc(done.url)}" target="_blank" rel="noopener">${esc(S.review.pr.owner)}/${esc(S.review.pr.repo)}#${S.review.pr.number}</a>${extra}.
+		${done.note ? `<p class="cdim">${inline(done.note)}</p>` : ''}</div></div>`;
 }
 
 // ---------- jumps from the navigator ----------
@@ -1488,6 +1521,9 @@ async function onAct(a) {
 		return showContext(k);
 	}
 	if (a === 'next') return me('Next').then(goNext);
+	if (a.startsWith('accept:')) return startDecision(a.slice(7), 'accept');
+	if (a === 'notyet')
+		return me('Not yet').then(() => sayText('Okay, it stays open.', { pause: 100 }));
 	if (a === 'finish') return me('Let’s finish').then(finish);
 	if (a === 'firstopen') {
 		const id = nextUndecided(S.deck, null);
@@ -1671,5 +1707,3 @@ async function boot() {
 	}
 }
 void boot();
-// For the tests and for driving the page by hand.
-window.chatReview = { S, route, showCard, finish, openFile, openSwitcher };

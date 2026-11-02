@@ -304,22 +304,44 @@ describe('the site', dbOptions(), () => {
 			assert.equal((await get(asset)).status, 200, asset);
 	});
 
-	it('reads a changed file whole, and the project, for the chat review only', async () => {
+	it('reads a changed file whole at the reviewed head, and the project, for the chat review only', async () => {
 		const cookie = await signIn('first');
 		const headers = { cookie };
 		assert.equal((await get('/o/r/pull/7/review/file?path=src/engine/core.js')).status, 401);
 		assert.equal((await get('/o/r/pull/7/review/context')).status, 401);
-		const ok = await get('/o/r/pull/7/review/file?path=src/engine/core.js', { headers });
+		const unopened = await get('/o/r/pull/7/review/file?path=src/engine/core.js', { headers });
+		assert.equal(unopened.status, 404);
+		assert.match((await unopened.json()).error, /Open the review/);
+		const opened = await get('/engine/api/reviews', {
+			method: 'POST',
+			headers: { ...same, cookie },
+			body: JSON.stringify({ url: PR.url })
+		});
+		const { id } = await opened.json();
+		for (let i = 0; i < 100; i++) {
+			const r = await (await get(`/engine/api/reviews/${id}`, { headers })).json();
+			if (!Object.values(r.runs).some((x) => x.state === 'queued' || x.state === 'running')) break;
+			await new Promise((res) => setTimeout(res, 20));
+		}
+		// The author pushes again: the drawer still reads the head the review's diff came from.
+		const reviewed = PR.headSha;
+		PR.headSha = 'fff9999aaa';
+		let ok;
+		try {
+			ok = await get('/o/r/pull/7/review/file?path=src/engine/core.js', { headers });
+		} finally {
+			PR.headSha = reviewed;
+		}
 		assert.equal(ok.status, 200);
 		assert.deepEqual(await ok.json(), {
 			path: 'src/engine/core.js',
-			sha: PR.headSha,
+			sha: reviewed,
 			text: 'export function a() {\n  return 2;\n}\n'
 		});
 		assert.deepEqual(fakeReader.fileCalls.at(-1), {
 			owner: 'o',
 			repo: 'r',
-			sha: PR.headSha,
+			sha: reviewed,
 			path: 'src/engine/core.js'
 		});
 		// Only the PR's own files: never a proxy for the rest of GitHub.
@@ -419,6 +441,19 @@ describe('the site', dbOptions(), () => {
 			'https://github.com/o/r/pull/7#pullrequestreview-1'
 		);
 		assert.equal(posted.length, 1);
+		// A review goes up once: posting it again is refused before GitHub is asked.
+		const again = await get(`/engine/api/reviews/${id}/post`, {
+			method: 'POST',
+			headers,
+			body: JSON.stringify({ confirm: true, event: 'APPROVE', body: 'Again' })
+		});
+		assert.equal(again.status, 409);
+		assert.match((await again.json()).error, /already posted/);
+		assert.equal(posted.length, 1);
+		const listed = await (await get('/engine/api/reviews', { headers: { cookie } })).json();
+		const kept = listed.reviews.find((x) => x.id === id);
+		assert.equal(kept.posted.url, 'https://github.com/o/r/pull/7#pullrequestreview-1');
+		assert.equal(kept.decided, 0);
 		assert.equal(posted[0].authorization, 'Bearer tok-second');
 		assert.equal(posted[0].body.event, 'COMMENT');
 		assert.equal(posted[0].body.body, 'Thanks!');

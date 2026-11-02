@@ -357,7 +357,7 @@ export function accountPage({ user, origin, status: s, providers, error, saved }
   </div>
   <div class="card">
     <h2>Your data</h2>
-    <p class="dim">This site keeps your GitHub username, your reviews, your prompts, your key (sealed) and, while you’re signed in, your GitHub sign-in token (sealed), so a review you confirm can be posted as you. Signing out deletes the token. Forgetting deletes the reviews, prompts, key and token; your username and today’s allowance use stay.</p>
+    <p class="dim">This site keeps your GitHub username, your reviews, your prompts, your key (sealed) and your GitHub sign-in token (sealed), so a review you confirm can be posted as you. Signing out deletes the token, as does GitHub turning it down; if your session just runs out, the token stays until you sign in again (which replaces it). Forgetting deletes the reviews, prompts, key and token; your username and today’s allowance use stay.</p>
     <form method="post" action="/account/forget"><button class="btn">Forget my reviews and key</button></form>
   </div>
 </section>`;
