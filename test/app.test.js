@@ -357,6 +357,8 @@ describe('the site', dbOptions(), () => {
 		assert.equal(ctx.status, 200);
 		assert.equal((await ctx.json()).description, 'A repo of tricks.');
 		assert.equal((await get('/o/r/pull/7/review/other', { headers })).status, 404);
+		// Opening the review cached its stage answers for everyone; the metered test needs a cold cache.
+		await db.query('DELETE FROM ai_cache');
 	});
 
 	it('refuses a bad callback', async () => {
