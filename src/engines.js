@@ -1,7 +1,8 @@
 /**
  * One shared engine per signed-in user, made when they first use it: their
- * own reviews and prompts (a Postgres-backed store), the site's GitHub reader,
- * and the reviewer they get (their key, else the free allowance, else none).
+ * own reviews and prompts (a Postgres-backed store), the site's GitHub reader
+ * (posting as them), and the reviewer they get (their key, else the free
+ * allowance, else none).
  * The demo reviews, pre-generated, are added to each user's store so every
  * stage of them can be tried at no cost. An engine nobody has used for a
  * while, with nothing queued, is written out and let go.
@@ -10,7 +11,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { createHandler } from 'pr-review-wheelhouse/wheelhouse/engine/http.js';
-import { createReviews } from 'pr-review-wheelhouse/wheelhouse/engine/review.js';
+import { createReviews, ReviewError } from 'pr-review-wheelhouse/wheelhouse/engine/review.js';
 import { allowanceModel, offModel, ownKeyModel } from './reviewer.js';
 import { loadStore } from './store.js';
 
@@ -37,7 +38,8 @@ export function readSeeds(dir) {
  * @param {{
  *   db: any; users: ReturnType<typeof import('./users.js').createUsers>;
  *   spend: ReturnType<typeof import('./spend.js').createSpend>;
- *   cache: any; github: any; ai: any; seeds?: any[]; version: string;
+ *   cache: any; github: any; poster?: ReturnType<typeof import('./post.js').createPoster>;
+ *   ai: any; seeds?: any[]; version: string;
  *   log?: (line: string) => void; idleMs?: number; fetch?: typeof fetch;
  * }} o
  */
@@ -47,6 +49,7 @@ export function createEngines({
 	spend,
 	cache,
 	github,
+	poster,
 	ai,
 	seeds = [],
 	version,
@@ -103,7 +106,7 @@ export function createEngines({
 		await ctx.refresh();
 		const model = () => ctx.reviewer;
 		ctx.reviews = createReviews({
-			github,
+			github: poster ? { ...github, post: (pr, review) => poster.post(user, pr, review) } : github,
 			store,
 			model,
 			log: (l) => log(`[user ${user.id}] ${l}`)
@@ -113,8 +116,27 @@ export function createEngines({
 			label: ctx.reviewer.name,
 			where: ctx.own ? 'on your key' : allowance ? 'on the free allowance' : '(live AI off)'
 		});
+		/** Reviews being posted now: a review goes up to GitHub once per head. */
+		const posting = new Set();
 		const reviews = {
 			...ctx.reviews,
+			/** Each kept review with how many of its cards the reviewer has decided. */
+			list() {
+				return ctx.reviews.list().map((x) => ({
+					...x,
+					decided: Object.keys(ctx.reviews.view(x.id).cardDecisions ?? {}).length
+				}));
+			},
+			async post(id, body) {
+				if (ctx.reviews.view(id).posted || posting.has(id))
+					throw new ReviewError('This review is already posted to GitHub.', 409);
+				posting.add(id);
+				try {
+					return await ctx.reviews.post(id, body);
+				} finally {
+					posting.delete(id);
+				}
+			},
 			run(id, stage) {
 				const was = ctx.reviews.view(id).runs[stage]?.state;
 				const r = ctx.reviews.run(id, stage);

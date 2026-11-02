@@ -10,6 +10,7 @@ import { after, before, describe, it } from 'node:test';
 import { createApp } from '../src/app.js';
 import { createAuth } from '../src/auth.js';
 import { createEngines } from '../src/engines.js';
+import { createPoster } from '../src/post.js';
 import { pgCache } from '../src/reviewer.js';
 import { createSealer } from '../src/seal.js';
 import { createSpend } from '../src/spend.js';
@@ -54,6 +55,25 @@ const fakeReader = {
 	},
 	async post() {
 		throw new Error('never');
+	},
+	/** Files at a head, as the raw host gives them: null when the file isn't there. */
+	files: new Map([['src/engine/core.js', 'export function a() {\n  return 2;\n}\n']]),
+	fileCalls: [],
+	async file(owner, repo, sha, path) {
+		this.fileCalls.push({ owner, repo, sha, path });
+		return this.files.get(path) ?? null;
+	},
+	async project(owner, repo) {
+		return {
+			repo: `${owner}/${repo}`,
+			url: `https://github.com/${owner}/${repo}`,
+			description: 'A repo of tricks.',
+			language: 'JavaScript',
+			topics: ['tricks'],
+			stars: 3,
+			branch: 'main',
+			readme: '# r\n\nIt does tricks.'
+		};
 	}
 };
 
@@ -70,9 +90,19 @@ function answer(body) {
 	return JSON.stringify({ findings: [], notes: [], files: [], summary: 'ok' });
 }
 
+/** Reviews posted to the fake GitHub. */
+const posted = [];
+
 function fakeOAuth() {
 	return async (url, init = {}) => {
 		const u = String(url);
+		if (u === 'https://api.github.example/repos/o/r/pulls/7/reviews') {
+			posted.push({ authorization: init.headers.authorization, body: JSON.parse(init.body) });
+			return Response.json(
+				{ id: 1, html_url: 'https://github.com/o/r/pull/7#pullrequestreview-1' },
+				{ status: 201 }
+			);
+		}
 		if (u === 'https://github.example/login/oauth/access_token') {
 			const { code } = JSON.parse(init.body);
 			return Response.json({ access_token: `tok-${code}` });
@@ -108,6 +138,12 @@ describe('the site', dbOptions(), () => {
 			fetch: fakeOAuth()
 		});
 		const users = createUsers({ db, sealer: createSealer(randomBytes(32)) });
+		const poster = createPoster({
+			users,
+			auth,
+			api: 'https://api.github.example',
+			fetch: fakeOAuth()
+		});
 		const caps = { userUsd: 0.05, globalUsd: 10 };
 		const spend = createSpend({ db, caps });
 		engines = createEngines({
@@ -116,6 +152,7 @@ describe('the site', dbOptions(), () => {
 			spend,
 			cache: pgCache(db),
 			github: fakeReader,
+			poster,
 			ai: {
 				baseUrl: 'https://openrouter.example/api/v1',
 				apiKey: 'server-key',
@@ -241,6 +278,89 @@ describe('the site', dbOptions(), () => {
 		assert.equal((await get('/engine/api/status', { headers: { cookie: again } })).status, 200);
 	});
 
+	it('serves the guided review as a chat, with the card tab a click away', async () => {
+		const cookie = await signIn('first');
+		const chat = await get('/o/r/pull/7/review', { headers: { cookie } });
+		assert.equal(chat.status, 200);
+		const html = await chat.text();
+		assert.match(html, /id="chatapp"/);
+		assert.match(html, /data-pr="https:\/\/github\.com\/o\/r\/pull\/7"/);
+		assert.match(html, /data-live="1"/);
+		assert.match(html, /<script type="module" src="\/static\/chat\.js\?v=/);
+		assert.match(html, /href="\/o\/r\/pull\/7\/review\?view=cards">Card view/);
+		assert.ok(!/review\.js/.test(html));
+		const cards = await (
+			await get('/o/r/pull/7/review?view=cards', { headers: { cookie } })
+		).text();
+		assert.match(cards, /\/static\/review\.js/);
+		assert.match(cards, /Chat review/);
+		for (const asset of [
+			'/static/chat.js',
+			'/static/chat-core.js',
+			'/static/chat.css',
+			'/ui/draft.js',
+			'/ui/cards.js'
+		])
+			assert.equal((await get(asset)).status, 200, asset);
+	});
+
+	it('reads a changed file whole at the reviewed head, and the project, for the chat review only', async () => {
+		const cookie = await signIn('first');
+		const headers = { cookie };
+		assert.equal((await get('/o/r/pull/7/review/file?path=src/engine/core.js')).status, 401);
+		assert.equal((await get('/o/r/pull/7/review/context')).status, 401);
+		const unopened = await get('/o/r/pull/7/review/file?path=src/engine/core.js', { headers });
+		assert.equal(unopened.status, 404);
+		assert.match((await unopened.json()).error, /Open the review/);
+		const opened = await get('/engine/api/reviews', {
+			method: 'POST',
+			headers: { ...same, cookie },
+			body: JSON.stringify({ url: PR.url })
+		});
+		const { id } = await opened.json();
+		for (let i = 0; i < 100; i++) {
+			const r = await (await get(`/engine/api/reviews/${id}`, { headers })).json();
+			if (!Object.values(r.runs).some((x) => x.state === 'queued' || x.state === 'running')) break;
+			await new Promise((res) => setTimeout(res, 20));
+		}
+		// The author pushes again: the drawer still reads the head the review's diff came from.
+		const reviewed = PR.headSha;
+		PR.headSha = 'fff9999aaa';
+		let ok;
+		try {
+			ok = await get('/o/r/pull/7/review/file?path=src/engine/core.js', { headers });
+		} finally {
+			PR.headSha = reviewed;
+		}
+		assert.equal(ok.status, 200);
+		assert.deepEqual(await ok.json(), {
+			path: 'src/engine/core.js',
+			sha: reviewed,
+			text: 'export function a() {\n  return 2;\n}\n'
+		});
+		assert.deepEqual(fakeReader.fileCalls.at(-1), {
+			owner: 'o',
+			repo: 'r',
+			sha: reviewed,
+			path: 'src/engine/core.js'
+		});
+		// Only the PR's own files: never a proxy for the rest of GitHub.
+		const calls = fakeReader.fileCalls.length;
+		const other = await get('/o/r/pull/7/review/file?path=secrets/.env', { headers });
+		assert.equal(other.status, 404);
+		assert.match((await other.json()).error, /isn’t part of this pull request/);
+		assert.equal(fakeReader.fileCalls.length, calls);
+		const gone = await get('/o/r/pull/7/review/file?path=src/engine/util.js', { headers });
+		assert.equal(gone.status, 404);
+		assert.match((await gone.json()).error, /deleted/);
+		const ctx = await get('/o/r/pull/7/review/context', { headers });
+		assert.equal(ctx.status, 200);
+		assert.equal((await ctx.json()).description, 'A repo of tricks.');
+		assert.equal((await get('/o/r/pull/7/review/other', { headers })).status, 404);
+		// Opening the review cached its stage answers for everyone; the metered test needs a cold cache.
+		await db.query('DELETE FROM ai_cache');
+	});
+
 	it('refuses a bad callback', async () => {
 		const res = await get('/auth/github/callback?code=x&state=forged');
 		assert.equal(res.status, 400);
@@ -298,13 +418,56 @@ describe('the site', dbOptions(), () => {
 		});
 		assert.equal(rerun.status, 409);
 		assert.equal(provider.calls.length, calls);
-		// Posting to GitHub isn't part of this site.
+		// Posting to GitHub goes up as the signed-in user, only once they confirm, and costs no AI.
+		const { rows: tokens } = await db.query(
+			'SELECT sealed FROM user_github_tokens WHERE user_id = $1',
+			[user]
+		);
+		assert.equal(tokens.length, 1);
+		assert.ok(!tokens[0].sealed.includes('tok-second'), 'the token is sealed');
+		const unconfirmed = await get(`/engine/api/reviews/${id}/post`, {
+			method: 'POST',
+			headers,
+			body: JSON.stringify({ event: 'COMMENT' })
+		});
+		assert.equal(unconfirmed.status, 400);
+		assert.equal(posted.length, 0);
 		const post = await get(`/engine/api/reviews/${id}/post`, {
 			method: 'POST',
 			headers,
-			body: JSON.stringify({ confirm: true, event: 'COMMENT' })
+			body: JSON.stringify({ confirm: true, event: 'COMMENT', body: 'Thanks!' })
 		});
-		assert.equal(post.status, 403);
+		assert.equal(post.status, 200);
+		assert.equal(
+			(await post.json()).posted.url,
+			'https://github.com/o/r/pull/7#pullrequestreview-1'
+		);
+		assert.equal(posted.length, 1);
+		// A review goes up once: posting it again is refused before GitHub is asked.
+		const again = await get(`/engine/api/reviews/${id}/post`, {
+			method: 'POST',
+			headers,
+			body: JSON.stringify({ confirm: true, event: 'APPROVE', body: 'Again' })
+		});
+		assert.equal(again.status, 409);
+		assert.match((await again.json()).error, /already posted/);
+		assert.equal(posted.length, 1);
+		const listed = await (await get('/engine/api/reviews', { headers: { cookie } })).json();
+		const kept = listed.reviews.find((x) => x.id === id);
+		assert.equal(kept.posted.url, 'https://github.com/o/r/pull/7#pullrequestreview-1');
+		assert.equal(kept.decided, 0);
+		assert.equal(posted[0].authorization, 'Bearer tok-second');
+		assert.equal(posted[0].body.event, 'COMMENT');
+		assert.equal(posted[0].body.body, 'Thanks!');
+		assert.equal(posted[0].body.commit_id, PR.headSha);
+		assert.equal(provider.calls.length, calls);
+		// Signing out drops the token; posting then asks you to sign in again.
+		const out = await get('/auth/signout', { method: 'POST', headers: { origin: ORIGIN, cookie } });
+		assert.equal(out.status, 303);
+		assert.equal(
+			(await db.query('SELECT 1 FROM user_github_tokens WHERE user_id = $1', [user])).rowCount,
+			0
+		);
 	});
 
 	it('keeps a user’s own key sealed, and reviews with it unmetered', async () => {

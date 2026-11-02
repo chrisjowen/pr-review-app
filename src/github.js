@@ -20,6 +20,9 @@ import {
 
 const NAME = /^[\w.-]{1,100}$/;
 const MAX_DIFF = 20 * 1024 * 1024;
+/** The most of one file, or of a README, the review's file drawer and context will read. */
+const MAX_FILE = 1024 * 1024;
+const SHA = /^[0-9a-f]{7,40}$/i;
 
 /** A small TTL cache that keeps stale entries to fall back on when GitHub says no. */
 function cache(max) {
@@ -58,10 +61,12 @@ export function createGitHubReader({
 	ttlMs = 90_000,
 	log = () => {},
 	api = 'https://api.github.com',
-	web = 'https://github.com'
+	web = 'https://github.com',
+	raw = 'https://raw.githubusercontent.com'
 } = {}) {
 	const meta = cache(500);
 	const diffs = cache(60);
+	const texts = cache(200);
 	const headers = {
 		'user-agent': 'pr-review-app',
 		'x-github-api-version': '2022-11-28',
@@ -157,6 +162,22 @@ export function createGitHubReader({
 			}))
 		);
 
+	/** Text from github.com's raw host (not rate limited), capped; null when it isn't there. */
+	async function rawText(url) {
+		const res = await get(url, {
+			headers: { 'user-agent': headers['user-agent'] },
+			redirect: 'follow',
+			signal: AbortSignal.timeout(20_000)
+		});
+		if (res.status === 404) return null;
+		if (!res.ok) throw new GitHubError(`GitHub answered ${res.status} for that file.`, 502);
+		if (Number(res.headers.get('content-length') ?? 0) > MAX_FILE)
+			throw new GitHubError('That file is too big to show here.', 413);
+		const text = await res.text();
+		if (text.length > MAX_FILE) throw new GitHubError('That file is too big to show here.', 413);
+		return text;
+	}
+
 	const shape = (p, owner, repo, checks, commits = []) => ({
 		owner,
 		repo,
@@ -214,7 +235,63 @@ export function createGitHubReader({
 			return { pr, diff };
 		},
 
-		/** Posting needs write access we don't ask for: v1 copies the review as Markdown instead. */
+		/**
+		 * One file as it is at a commit, for the review's file drawer: its text,
+		 * or null when the file isn't there (deleted at that commit).
+		 */
+		async file(owner, repo, sha, path) {
+			if (!NAME.test(owner) || !NAME.test(repo) || !SHA.test(sha))
+				throw new GitHubError('That isn’t a file in a pull request.', 400);
+			const clean = String(path ?? '');
+			if (
+				!clean ||
+				clean.length > 1000 ||
+				clean.split('/').some((p) => !p || p === '.' || p === '..')
+			)
+				throw new GitHubError('That isn’t a file in a pull request.', 400);
+			const enc = clean.split('/').map(encodeURIComponent).join('/');
+			return cached(
+				texts,
+				`file:${owner}/${repo}@${sha}`.toLowerCase() + `:${clean}`,
+				Infinity,
+				() => rawText(`${raw}/${owner}/${repo}/${sha}/${enc}`)
+			);
+		},
+
+		/**
+		 * What the review says about the project as a whole: the repository's
+		 * description, language and topics, and the start of its README.
+		 */
+		async project(owner, repo) {
+			if (!NAME.test(owner) || !NAME.test(repo))
+				throw new GitHubError('That isn’t a GitHub repository.', 400);
+			const r = await cached(meta, `repo:${owner}/${repo}`.toLowerCase(), 60 * 60_000, () =>
+				call(`/repos/${owner}/${repo}`)
+			);
+			const branch = String(r.default_branch ?? 'main');
+			let readme = null;
+			for (const name of ['README.md', 'readme.md', 'README']) {
+				readme = await cached(
+					texts,
+					`readme:${owner}/${repo}@${branch}`.toLowerCase() + `:${name}`,
+					60 * 60_000,
+					() => rawText(`${raw}/${owner}/${repo}/${encodeURIComponent(branch)}/${name}`)
+				).catch(() => null);
+				if (readme !== null) break;
+			}
+			return {
+				repo: `${owner}/${repo}`,
+				url: String(r.html_url ?? `${web}/${owner}/${repo}`),
+				description: String(r.description ?? ''),
+				language: r.language ? String(r.language) : null,
+				topics: Array.isArray(r.topics) ? r.topics.map(String).slice(0, 12) : [],
+				stars: Number(r.stargazers_count ?? 0),
+				branch,
+				readme: readme === null ? null : readme.slice(0, 6000)
+			};
+		},
+
+		/** The site itself never posts: a review goes up as its user, through post.js. */
 		async post() {
 			throw new GitHubError(
 				'This site doesn’t post to GitHub. Copy the review as Markdown and paste it into the pull request.',

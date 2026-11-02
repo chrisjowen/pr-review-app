@@ -10,6 +10,7 @@
  * Optional:
  *   PORT (8080), PRREVIEW_ORIGIN (http://localhost:$PORT)
  *   PRREVIEW_GITHUB_CLIENT_ID, PRREVIEW_GITHUB_CLIENT_SECRET   Sign in with GitHub (a GitHub App, or an OAuth App)
+ *   PRREVIEW_GITHUB_APP_SLUG      the GitHub App's slug, to link its install page when it can't post
  *   PRREVIEW_GITHUB_TOKEN         reads public PRs with 5,000 API calls an hour instead of 60
  *   PRREVIEW_DEMO_LOGIN=1         a throwaway demo login, for local use (refused with an https origin)
  *   OPENROUTER_API_KEY            turns on the free AI allowance (or PRREVIEW_AI_API_KEY for another provider)
@@ -54,6 +55,9 @@ export function readConfig(env = process.env) {
 			clientSecret: env.PRREVIEW_GITHUB_CLIENT_SECRET || '',
 			oauthUrl: env.PRREVIEW_GITHUB_OAUTH_URL || '',
 			apiUrl: env.PRREVIEW_GITHUB_API_URL || '',
+			appSlug: /^[\w-]{1,100}$/.test(env.PRREVIEW_GITHUB_APP_SLUG ?? '')
+				? env.PRREVIEW_GITHUB_APP_SLUG
+				: '',
 			token: env.PRREVIEW_GITHUB_TOKEN || ''
 		},
 		demoLogin: env.PRREVIEW_DEMO_LOGIN === '1',

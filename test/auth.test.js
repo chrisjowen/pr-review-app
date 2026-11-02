@@ -153,7 +153,7 @@ describe('Sign in with GitHub (OAuth App, identity only)', () => {
 		assert.throws(() => auth.start('/'), /isn’t set up/);
 	});
 
-	it('signs in: authorise, call back, trade the code, ask who it is, keep no token', async () => {
+	it('signs in: authorise, call back, trade the code, ask who it is, hand back the token', async () => {
 		const gh = fakeGitHub();
 		const auth = createAuth({ secret: SECRET, origin: ORIGIN, github, fetch: gh.fetch });
 		const s = auth.start('/o/r/pull/1/review');
@@ -177,10 +177,16 @@ describe('Sign in with GitHub (OAuth App, identity only)', () => {
 		assert.equal(done.next, '/o/r/pull/1/review');
 		assert.match(done.clear, /Max-Age=0/);
 		assert.equal(gh.calls.length, 2);
-		assert.ok(!JSON.stringify(done).includes('gho_token'));
+		assert.deepEqual(done.token, {
+			access: 'gho_token',
+			refresh: null,
+			expiresAt: null,
+			refreshExpiresAt: null
+		});
 	});
 
-	it('works with a GitHub App’s expiring user tokens, keeping neither token', async () => {
+	it('works with a GitHub App’s expiring user tokens, and renews them', async () => {
+		const now = 1_700_000_000_000;
 		const fetch = async (url, init = {}) => {
 			if (String(url).endsWith('/login/oauth/access_token'))
 				return Response.json({
@@ -194,7 +200,7 @@ describe('Sign in with GitHub (OAuth App, identity only)', () => {
 			assert.equal(init.headers.authorization, 'Bearer ghu_expiring');
 			return Response.json({ id: 7, login: 'app-user', name: null });
 		};
-		const auth = createAuth({ secret: SECRET, origin: ORIGIN, github, fetch });
+		const auth = createAuth({ secret: SECRET, origin: ORIGIN, github, fetch, now: () => now });
 		const s = auth.start('/');
 		const done = await auth.finish(
 			reqWith([s.cookie]),
@@ -206,7 +212,52 @@ describe('Sign in with GitHub (OAuth App, identity only)', () => {
 			name: 'app-user',
 			kind: 'github'
 		});
-		assert.ok(!/ghu_|ghr_/.test(JSON.stringify(done)));
+		assert.deepEqual(done.token, {
+			access: 'ghu_expiring',
+			refresh: 'ghr_refresh',
+			expiresAt: now + 28800_000,
+			refreshExpiresAt: now + 15897600_000
+		});
+
+		const sent = [];
+		const renewing = createAuth({
+			secret: SECRET,
+			origin: ORIGIN,
+			github,
+			now: () => now,
+			fetch: async (url, init) => {
+				sent.push({ url: String(url), body: JSON.parse(init.body) });
+				return Response.json({
+					access_token: 'ghu_next',
+					expires_in: 60,
+					refresh_token: 'ghr_next'
+				});
+			}
+		});
+		assert.deepEqual(await renewing.refresh('ghr_refresh'), {
+			access: 'ghu_next',
+			refresh: 'ghr_next',
+			expiresAt: now + 60_000,
+			refreshExpiresAt: null
+		});
+		assert.deepEqual(sent, [
+			{
+				url: 'https://github.example/login/oauth/access_token',
+				body: {
+					client_id: 'Iv1.client',
+					client_secret: 'shh',
+					grant_type: 'refresh_token',
+					refresh_token: 'ghr_refresh'
+				}
+			}
+		]);
+		const refused = createAuth({
+			secret: SECRET,
+			origin: ORIGIN,
+			github,
+			fetch: async () => Response.json({ error: 'bad_refresh_token' })
+		});
+		await assert.rejects(refused.refresh('x'), /didn’t renew/);
 	});
 
 	it('says what went wrong when GitHub sends the browser back with an error', async () => {

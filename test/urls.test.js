@@ -26,6 +26,11 @@ describe('the URL swap', () => {
 		])
 			assert.equal(matchPrPath(path)?.suffix, suffix, path);
 		assert.equal(matchPrPath('/o/r/pull/12/review/more'), null);
+		// What the chat review reads besides the engine.
+		assert.equal(matchPrPath('/o/r/pull/12/review/file')?.part, 'file');
+		assert.equal(matchPrPath('/o/r/pull/12/review/context')?.part, 'context');
+		assert.equal(matchPrPath('/o/r/pull/12/review/file/x'), null);
+		assert.equal(matchPrPath('/o/r/pull/12/review')?.part, undefined);
 	});
 
 	it('keeps owner and repo names GitHub allows, and refuses others', () => {

@@ -5,7 +5,7 @@ export default [
 	{ ignores: ['node_modules/'] },
 	js.configs.recommended,
 	{
-		files: ['src/**/*.js', 'test/**/*.js', 'deploy/**/*.js', 'eslint.config.js'],
+		files: ['src/**/*.js', 'test/**/*.js', 'scripts/**/*.js', 'deploy/**/*.js', 'eslint.config.js'],
 		languageOptions: { globals: globals.node }
 	},
 	{

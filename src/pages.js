@@ -52,7 +52,7 @@ ${description ? `<meta name="description" content="${esc(description)}">` : ''}
 <main class="${wide ? 'wide' : ''}">
 ${body}
 </main>
-${bare ? '' : `<footer class="foot"><p>PR review for humans reads public pull requests and never posts to GitHub. It shares its review engine with the <a href="https://github.com/chrisjowen/pr-review-wheelhouse">pr-review-wheelhouse</a> plugin; the site’s own code is <a href="https://github.com/chrisjowen/pr-review-app">open source</a>. ${esc(origin.replace(/^https?:\/\//, ''))}</p></footer>`}
+${bare ? '' : `<footer class="foot"><p>PR review for humans reads public pull requests, and posts to GitHub only a review you confirm, as you. It shares its review engine with the <a href="https://github.com/chrisjowen/pr-review-wheelhouse">pr-review-wheelhouse</a> plugin; the site’s own code is <a href="https://github.com/chrisjowen/pr-review-app">open source</a>. ${esc(origin.replace(/^https?:\/\//, ''))}</p></footer>`}
 </body>
 </html>`;
 }
@@ -100,14 +100,14 @@ export function marketingPage({ user, origin, demo, caps, aiOn }) {
 <section class="band split">
   <div>
     <h2>Then a second pair of eyes, if you want one</h2>
-    <p class="sub">Sign in with GitHub to start a guided review. It walks you through the PR in stages, and a reviewer sits beside the code to talk each one through.</p>
+    <p class="sub">Sign in with GitHub to start a guided review: one card per change, each with a plain verdict, and a review mate beside every card to talk it through.</p>
     <ol class="stages">
       <li><b>Walkthrough.</b> What the PR does and why, the evidence it claims, where the files went.</li>
-      <li><b>Quality pass.</b> Readability only: nesting, long functions, duplication, names. Keep or dismiss each note.</li>
-      <li><b>Stops.</b> The important changes, with notes pinned above the lines, alternatives, and the reviewer’s pick.</li>
-      <li><b>Skim pile.</b> One line and a risk level for everything else.</li>
+      <li><b>Key changes.</b> The changes that matter, one card each: a verdict (looks good, exemplary, code smell, possible security issue, not well tested…), why, a suggestion for problems, and the code with the key lines lit.</li>
+      <li><b>Quality pass.</b> Every concern in one checklist, so nothing slips through.</li>
+      <li><b>Skim pile.</b> The small stuff, a card each; generated files stay hidden.</li>
     </ol>
-    <p class="fine">You decide. Questions and change requests pin to lines; <b>Finish review</b> drafts your verdict, and you copy it as Markdown. Nothing is posted anywhere.</p>
+    <p class="fine">You decide: accept, disagree or comment on each card, and say when a disagreement is worth remembering. <b>Finish review</b> drafts your verdict; post it to the pull request as you, after you’ve seen it, or copy it as Markdown.</p>
   </div>
   <figure class="shot"><img src="/static/stop-web.png" alt="A stop in the guided review: a reviewer note pinned above the lines it discusses" loading="lazy"><figcaption>A stop: notes pinned above the lines they discuss.</figcaption></figure>
 </section>
@@ -222,7 +222,7 @@ export function prPage({ user, origin, pr, files, checksKnown, demo, signin, lim
 
 	const reviewNote = demo
 		? 'A guided review of this PR is pre-generated, so you can try every stage.'
-		: 'A walkthrough, a quality pass, the key changes a few files at a time, a skim pile, and a reviewer to talk it through.';
+		: 'A walkthrough, then one card per change with a plain verdict, the key changes first, every concern in a checklist, and a review mate beside each card.';
 	const ctaButton =
 		user || signin
 			? `<a class="btn primary block" href="${esc(cta)}">${user ? 'Start the guided review →' : 'Sign in to review →'}</a>`
@@ -357,7 +357,7 @@ export function accountPage({ user, origin, status: s, providers, error, saved }
   </div>
   <div class="card">
     <h2>Your data</h2>
-    <p class="dim">This site keeps your GitHub username, your reviews, your prompts and your key (sealed). Forgetting deletes the reviews, prompts and key; your username and today’s allowance use stay.</p>
+    <p class="dim">This site keeps your GitHub username, your reviews, your prompts, your key (sealed) and your GitHub sign-in token (sealed), so a review you confirm can be posted as you. Signing out deletes the token, as does GitHub turning it down; if your session just runs out, the token stays until you sign in again (which replaces it). Forgetting deletes the reviews, prompts, key and token; your username and today’s allowance use stay.</p>
     <form method="post" action="/account/forget"><button class="btn">Forget my reviews and key</button></form>
   </div>
 </section>`;
@@ -390,10 +390,84 @@ export function reviewShell({ user, origin, pr, settings, note }) {
 	const body = `
 <div class="shellbar">
   <a href="/${esc(pr.owner)}/${esc(pr.repo)}/pull/${pr.number}">← Reading plan</a>
-  <span class="dim small">${esc(note)} · <a href="/account">Account</a></span>
+  <span class="dim small">${esc(note)} · <a href="/${esc(pr.owner)}/${esc(pr.repo)}/pull/${pr.number}/review">Chat review</a> · <a href="/account">Account</a></span>
 </div>
 <div id="tab" data-pr="${esc(pr.url)}" data-settings="${esc(JSON.stringify(settings))}"></div>
 <script type="module" src="/static/review.js"></script>`;
+	return layout({
+		title: `Review · ${pr.owner}/${pr.repo}#${pr.number}`,
+		body,
+		user,
+		origin,
+		bare: true,
+		wide: true
+	});
+}
+
+/**
+ * The guided review as a chat (static/chat.js): the conversation in the
+ * middle, and beside it, separate from it, the navigator (the passage's groups
+ * and stops, and every changed file) and a drawer for a whole file. Everything
+ * the chat shows comes from the engine's API and this PR's own files.
+ */
+export function chatShell({ user, origin, pr, note, live }) {
+	const here = `/${esc(pr.owner)}/${esc(pr.repo)}/pull/${pr.number}`;
+	const body = `
+<div class="chatapp" id="chatapp" data-pr="${esc(pr.url)}" data-path="${here}" data-live="${live ? '1' : '0'}" data-login="${esc(user?.login ?? '')}">
+  <div class="cbar">
+    <button class="cghost only-narrow" id="navBtn" aria-controls="nav" aria-expanded="false">☰ <span class="hide-phone">Navigator</span></button>
+    <a class="cback" href="${here}" title="The reading plan">←</a>
+    <div class="ctitle"><a href="${esc(pr.url)}" class="cnum">${esc(pr.owner)}/${esc(pr.repo)}#${pr.number}</a> <span id="prTitle"></span></div>
+    <div class="cprogress" title="Changes decided"><span id="progressText" class="hide-phone"></span><span class="ctrack"><span id="progressFill"></span></span></div>
+    <button class="cghost" id="filesBtn" title="Go to a changed file">Files <kbd id="swKey" class="hide-phone">Ctrl E</kbd></button>
+    <span class="cnote hide-phone">${esc(note)} · <a href="${here}/review?view=cards">Card view</a> · <a href="/account">Account</a></span>
+  </div>
+  <div class="clayout">
+    <nav class="cnav" id="nav" aria-label="Navigator">
+      <div class="cnav-head">
+        <p class="cnav-label"><span>Navigator</span><button class="linkish only-narrow" id="navClose">Close</button></p>
+        <div class="ctabs" role="tablist">
+          <button role="tab" id="tabPassage" aria-selected="true" aria-controls="navBody">Passage</button>
+          <button role="tab" id="tabFiles" aria-selected="false" aria-controls="navBody">Files <span class="ccount" id="fileCount"></span></button>
+        </div>
+      </div>
+      <div class="cnav-body" id="navBody" role="tabpanel"></div>
+      <div class="cnav-foot hide-phone"><span><kbd id="swKey2">Ctrl E</kbd> files</span><span><kbd>/</kbd> type</span><span><kbd>A</kbd> <kbd>D</kbd> <kbd>C</kbd> decide</span><span><kbd>N</kbd> next</span></div>
+    </nav>
+    <section class="cchat" aria-label="Review conversation">
+      <div class="cstream" id="stream"><div class="ccol" id="log" aria-live="polite"><noscript><p>The review needs JavaScript. The <a href="${here}">reading plan</a> works without it.</p></noscript></div></div>
+      <div class="ccompose">
+        <div class="ccol">
+          <div class="cfollow" id="followups" aria-label="Suggested replies"></div>
+          <form class="cform" id="composer">
+            <label class="sr" for="input">Message the reviewer</label>
+            <textarea id="input" rows="1" placeholder="Ask anything about this PR, or say “next”…"></textarea>
+            <button class="csend" type="submit" aria-label="Send">→</button>
+          </form>
+          <div class="cctx"><span id="contextLine"></span></div>
+        </div>
+      </div>
+    </section>
+    <aside class="cdrawer" id="drawer" aria-label="File" aria-hidden="true">
+      <div class="cdrawer-head">
+        <div class="cdrawer-top"><span class="cdrawer-path" id="drawerPath"></span><a class="cicon" id="drawerGh" target="_blank" rel="noopener" title="Open on GitHub" aria-label="Open on GitHub">↗</a><button class="cicon" id="drawerClose" aria-label="Close the file">✕</button></div>
+        <div class="cdrawer-sub"><div class="ctabs" role="tablist"><button role="tab" id="dtFull" aria-selected="true">Full file</button><button role="tab" id="dtDiff" aria-selected="false">Changes</button></div><span class="cdrawer-meta" id="drawerMeta"></span></div>
+        <div class="cdrawer-cards" id="drawerCards"></div>
+      </div>
+      <div class="clines" id="drawerLines" tabindex="0"></div>
+    </aside>
+  </div>
+  <div class="cscrim" id="scrim"></div>
+  <div class="cswitch" id="switcher" role="dialog" aria-modal="true" aria-label="Go to a changed file">
+    <div class="csw">
+      <input id="swInput" placeholder="Go to a changed file or card…" autocomplete="off" spellcheck="false" aria-controls="swList">
+      <ul id="swList" role="listbox"></ul>
+      <div class="csw-foot hide-phone"><span><kbd>↑</kbd> <kbd>↓</kbd> move</span><span><kbd>Enter</kbd> take the chat there</span><span><kbd>Shift</kbd>+<kbd>Enter</kbd> just open the file</span><span><kbd>Esc</kbd> close</span></div>
+    </div>
+  </div>
+</div>
+<link rel="stylesheet" href="/static/chat.css?v=${BOOT}">
+<script type="module" src="/static/chat.js?v=${BOOT}"></script>`;
 	return layout({
 		title: `Review · ${pr.owner}/${pr.repo}#${pr.number}`,
 		body,
