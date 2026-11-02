@@ -55,6 +55,25 @@ const fakeReader = {
 	},
 	async post() {
 		throw new Error('never');
+	},
+	/** Files at a head, as the raw host gives them: null when the file isn't there. */
+	files: new Map([['src/engine/core.js', 'export function a() {\n  return 2;\n}\n']]),
+	fileCalls: [],
+	async file(owner, repo, sha, path) {
+		this.fileCalls.push({ owner, repo, sha, path });
+		return this.files.get(path) ?? null;
+	},
+	async project(owner, repo) {
+		return {
+			repo: `${owner}/${repo}`,
+			url: `https://github.com/${owner}/${repo}`,
+			description: 'A repo of tricks.',
+			language: 'JavaScript',
+			topics: ['tricks'],
+			stars: 3,
+			branch: 'main',
+			readme: '# r\n\nIt does tricks.'
+		};
 	}
 };
 
@@ -257,6 +276,65 @@ describe('the site', dbOptions(), () => {
 		assert.equal(page.status, 200);
 		assert.match(await page.text(), /Free allowance: \$0\.00 of \$0\.05 used today/);
 		assert.equal((await get('/engine/api/status', { headers: { cookie: again } })).status, 200);
+	});
+
+	it('serves the guided review as a chat, with the card tab a click away', async () => {
+		const cookie = await signIn('first');
+		const chat = await get('/o/r/pull/7/review', { headers: { cookie } });
+		assert.equal(chat.status, 200);
+		const html = await chat.text();
+		assert.match(html, /id="chatapp"/);
+		assert.match(html, /data-pr="https:\/\/github\.com\/o\/r\/pull\/7"/);
+		assert.match(html, /data-live="1"/);
+		assert.match(html, /<script type="module" src="\/static\/chat\.js\?v=/);
+		assert.match(html, /href="\/o\/r\/pull\/7\/review\?view=cards">Card view/);
+		assert.ok(!/review\.js/.test(html));
+		const cards = await (
+			await get('/o/r/pull/7/review?view=cards', { headers: { cookie } })
+		).text();
+		assert.match(cards, /\/static\/review\.js/);
+		assert.match(cards, /Chat review/);
+		for (const asset of [
+			'/static/chat.js',
+			'/static/chat-core.js',
+			'/static/chat.css',
+			'/ui/draft.js',
+			'/ui/cards.js'
+		])
+			assert.equal((await get(asset)).status, 200, asset);
+	});
+
+	it('reads a changed file whole, and the project, for the chat review only', async () => {
+		const cookie = await signIn('first');
+		const headers = { cookie };
+		assert.equal((await get('/o/r/pull/7/review/file?path=src/engine/core.js')).status, 401);
+		assert.equal((await get('/o/r/pull/7/review/context')).status, 401);
+		const ok = await get('/o/r/pull/7/review/file?path=src/engine/core.js', { headers });
+		assert.equal(ok.status, 200);
+		assert.deepEqual(await ok.json(), {
+			path: 'src/engine/core.js',
+			sha: PR.headSha,
+			text: 'export function a() {\n  return 2;\n}\n'
+		});
+		assert.deepEqual(fakeReader.fileCalls.at(-1), {
+			owner: 'o',
+			repo: 'r',
+			sha: PR.headSha,
+			path: 'src/engine/core.js'
+		});
+		// Only the PR's own files: never a proxy for the rest of GitHub.
+		const calls = fakeReader.fileCalls.length;
+		const other = await get('/o/r/pull/7/review/file?path=secrets/.env', { headers });
+		assert.equal(other.status, 404);
+		assert.match((await other.json()).error, /isn’t part of this pull request/);
+		assert.equal(fakeReader.fileCalls.length, calls);
+		const gone = await get('/o/r/pull/7/review/file?path=src/engine/util.js', { headers });
+		assert.equal(gone.status, 404);
+		assert.match((await gone.json()).error, /deleted/);
+		const ctx = await get('/o/r/pull/7/review/context', { headers });
+		assert.equal(ctx.status, 200);
+		assert.equal((await ctx.json()).description, 'A repo of tricks.');
+		assert.equal((await get('/o/r/pull/7/review/other', { headers })).status, 404);
 	});
 
 	it('refuses a bad callback', async () => {

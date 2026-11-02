@@ -390,10 +390,84 @@ export function reviewShell({ user, origin, pr, settings, note }) {
 	const body = `
 <div class="shellbar">
   <a href="/${esc(pr.owner)}/${esc(pr.repo)}/pull/${pr.number}">← Reading plan</a>
-  <span class="dim small">${esc(note)} · <a href="/account">Account</a></span>
+  <span class="dim small">${esc(note)} · <a href="/${esc(pr.owner)}/${esc(pr.repo)}/pull/${pr.number}/review">Chat review</a> · <a href="/account">Account</a></span>
 </div>
 <div id="tab" data-pr="${esc(pr.url)}" data-settings="${esc(JSON.stringify(settings))}"></div>
 <script type="module" src="/static/review.js"></script>`;
+	return layout({
+		title: `Review · ${pr.owner}/${pr.repo}#${pr.number}`,
+		body,
+		user,
+		origin,
+		bare: true,
+		wide: true
+	});
+}
+
+/**
+ * The guided review as a chat (static/chat.js): the conversation in the
+ * middle, and beside it, separate from it, the navigator (the passage's groups
+ * and stops, and every changed file) and a drawer for a whole file. Everything
+ * the chat shows comes from the engine's API and this PR's own files.
+ */
+export function chatShell({ user, origin, pr, note, live }) {
+	const here = `/${esc(pr.owner)}/${esc(pr.repo)}/pull/${pr.number}`;
+	const body = `
+<div class="chatapp" id="chatapp" data-pr="${esc(pr.url)}" data-path="${here}" data-live="${live ? '1' : '0'}" data-login="${esc(user?.login ?? '')}">
+  <div class="cbar">
+    <button class="cghost only-narrow" id="navBtn" aria-controls="nav" aria-expanded="false">☰ <span class="hide-phone">Navigator</span></button>
+    <a class="cback" href="${here}" title="The reading plan">←</a>
+    <div class="ctitle"><a href="${esc(pr.url)}" class="cnum">${esc(pr.owner)}/${esc(pr.repo)}#${pr.number}</a> <span id="prTitle"></span></div>
+    <div class="cprogress" title="Changes decided"><span id="progressText" class="hide-phone"></span><span class="ctrack"><span id="progressFill"></span></span></div>
+    <button class="cghost" id="filesBtn" title="Go to a changed file">Files <kbd id="swKey" class="hide-phone">Ctrl E</kbd></button>
+    <span class="cnote hide-phone">${esc(note)} · <a href="${here}/review?view=cards">Card view</a> · <a href="/account">Account</a></span>
+  </div>
+  <div class="clayout">
+    <nav class="cnav" id="nav" aria-label="Navigator">
+      <div class="cnav-head">
+        <p class="cnav-label"><span>Navigator</span><button class="linkish only-narrow" id="navClose">Close</button></p>
+        <div class="ctabs" role="tablist">
+          <button role="tab" id="tabPassage" aria-selected="true" aria-controls="navBody">Passage</button>
+          <button role="tab" id="tabFiles" aria-selected="false" aria-controls="navBody">Files <span class="ccount" id="fileCount"></span></button>
+        </div>
+      </div>
+      <div class="cnav-body" id="navBody" role="tabpanel"></div>
+      <div class="cnav-foot hide-phone"><span><kbd id="swKey2">Ctrl E</kbd> files</span><span><kbd>/</kbd> type</span><span><kbd>A</kbd> <kbd>D</kbd> <kbd>C</kbd> decide</span><span><kbd>N</kbd> next</span></div>
+    </nav>
+    <section class="cchat" aria-label="Review conversation">
+      <div class="cstream" id="stream"><div class="ccol" id="log" aria-live="polite"><noscript><p>The review needs JavaScript. The <a href="${here}">reading plan</a> works without it.</p></noscript></div></div>
+      <div class="ccompose">
+        <div class="ccol">
+          <div class="cfollow" id="followups" aria-label="Suggested replies"></div>
+          <form class="cform" id="composer">
+            <label class="sr" for="input">Message the reviewer</label>
+            <textarea id="input" rows="1" placeholder="Ask anything about this PR, or say “next”…"></textarea>
+            <button class="csend" type="submit" aria-label="Send">→</button>
+          </form>
+          <div class="cctx"><span id="contextLine"></span></div>
+        </div>
+      </div>
+    </section>
+    <aside class="cdrawer" id="drawer" aria-label="File" aria-hidden="true">
+      <div class="cdrawer-head">
+        <div class="cdrawer-top"><span class="cdrawer-path" id="drawerPath"></span><a class="cicon" id="drawerGh" target="_blank" rel="noopener" title="Open on GitHub" aria-label="Open on GitHub">↗</a><button class="cicon" id="drawerClose" aria-label="Close the file">✕</button></div>
+        <div class="cdrawer-sub"><div class="ctabs" role="tablist"><button role="tab" id="dtFull" aria-selected="true">Full file</button><button role="tab" id="dtDiff" aria-selected="false">Changes</button></div><span class="cdrawer-meta" id="drawerMeta"></span></div>
+        <div class="cdrawer-cards" id="drawerCards"></div>
+      </div>
+      <div class="clines" id="drawerLines" tabindex="0"></div>
+    </aside>
+  </div>
+  <div class="cscrim" id="scrim"></div>
+  <div class="cswitch" id="switcher" role="dialog" aria-modal="true" aria-label="Go to a changed file">
+    <div class="csw">
+      <input id="swInput" placeholder="Go to a changed file or card…" autocomplete="off" spellcheck="false" aria-controls="swList">
+      <ul id="swList" role="listbox"></ul>
+      <div class="csw-foot hide-phone"><span><kbd>↑</kbd> <kbd>↓</kbd> move</span><span><kbd>Enter</kbd> take the chat there</span><span><kbd>Shift</kbd>+<kbd>Enter</kbd> just open the file</span><span><kbd>Esc</kbd> close</span></div>
+    </div>
+  </div>
+</div>
+<link rel="stylesheet" href="/static/chat.css?v=${BOOT}">
+<script type="module" src="/static/chat.js?v=${BOOT}"></script>`;
 	return layout({
 		title: `Review · ${pr.owner}/${pr.repo}#${pr.number}`,
 		body,

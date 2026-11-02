@@ -3,7 +3,8 @@
  * path, so `https://github.com/<owner>/<repo>/pull/<n>` reads at
  * `<origin>/<owner>/<repo>/pull/<n>`. GitHub's own tabs on a PR (`/files`,
  * `/commits`, `/checks`, with anything after them) land on the PR page;
- * `/review` is the guided review.
+ * `/review` is the guided review, and `/review/file` and `/review/context`
+ * are what it reads besides the engine (a changed file whole, and the project).
  */
 
 const OWNER = '[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})';
@@ -20,9 +21,13 @@ const SHORT = new RegExp(`^(${OWNER})/(${REPO})#(\\d{1,9})$`);
 const okRepo = (repo) => repo !== '.' && repo !== '..' && !repo.endsWith('.git');
 const okNumber = (n) => Number.isSafeInteger(n) && n >= 1;
 
+/** What the guided review reads from this site besides the engine. */
+const REVIEW_PARTS = new Set(['file', 'context']);
+
 /**
- * A pull request this site's path names, or null.
- * @returns {{ owner: string; repo: string; number: number; suffix: string | null } | null}
+ * A pull request this site's path names, or null. `part` names what the
+ * guided review reads (`file` or `context`), only when the path asks for one.
+ * @returns {{ owner: string; repo: string; number: number; suffix: string | null; part?: string } | null}
  */
 export function matchPrPath(pathname) {
 	const m = String(pathname).match(PATH);
@@ -30,8 +35,10 @@ export function matchPrPath(pathname) {
 	const [, owner, repo, n, suffix = null, rest] = m;
 	const number = Number(n);
 	if (!okRepo(repo) || !okNumber(number)) return null;
-	// The guided review has no sub-pages.
-	if (suffix === 'review' && rest && rest !== '/') return null;
+	if (suffix === 'review' && rest && rest !== '/') {
+		const part = rest.slice(1);
+		return REVIEW_PARTS.has(part) ? { owner, repo, number, suffix, part } : null;
+	}
 	return { owner, repo, number, suffix };
 }
 
