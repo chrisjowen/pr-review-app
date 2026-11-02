@@ -1,9 +1,11 @@
 /**
  * Who is signed in: an HMAC-signed session cookie naming the user. Two ways in:
  *
- * - Sign in with GitHub, through a GitHub OAuth App (identity only: no scopes,
- *   and the access token is used once to ask who you are, then dropped).
- * - A demo login, for running the app on your own machine before an OAuth App
+ * - Sign in with GitHub, through a GitHub App's user authorization (or a
+ *   classic OAuth App: the same web flow). Identity only: no scopes, and the
+ *   user token is used once to ask who you are, then dropped, so it doesn't
+ *   matter whether the App's user tokens expire or come with a refresh token.
+ * - A demo login, for running the app on your own machine before a GitHub App
  *   exists. It is off unless PRREVIEW_DEMO_LOGIN=1, and never on with an https
  *   origin, so a deployed site can't mint throwaway identities.
  */
@@ -156,8 +158,13 @@ export function createAuth({
 				!timingSafeEqual(Buffer.from(saved.state), Buffer.from(state))
 			)
 				throw new Error('That sign-in link expired or came from another browser. Try again.');
-			if (query.get('error'))
+			const error = query.get('error');
+			if (error === 'access_denied')
 				throw new Error('GitHub sign-in was cancelled. You can try again any time.');
+			if (error)
+				throw new Error(
+					`GitHub couldn’t sign you in (${error.replace(/[^\w-]/g, '').slice(0, 60)}). Try again.`
+				);
 			const code = query.get('code');
 			if (!code) throw new Error('GitHub didn’t send a sign-in code. Try again.');
 			const tokRes = await get(`${oauthUrl}/login/oauth/access_token`, {
@@ -173,7 +180,11 @@ export function createAuth({
 			});
 			const tok = tokRes.ok ? await tokRes.json().catch(() => ({})) : {};
 			if (typeof tok.access_token !== 'string' || !tok.access_token)
-				throw new Error('GitHub didn’t sign you in. Try again.');
+				throw new Error(
+					tok.error === 'incorrect_client_credentials'
+						? 'Sign in with GitHub is misconfigured on this site. Try again later.'
+						: 'GitHub didn’t sign you in. Try again.'
+				);
 			const meRes = await get(`${apiUrl}/user`, {
 				headers: {
 					accept: 'application/vnd.github+json',

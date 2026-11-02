@@ -20,7 +20,7 @@ The web app is a thin shell around the shared review engine, which it takes from
 - `src/app.js`: the routes, security headers (`script-src 'self'`), same-origin checks on every change, and the engine API proxy at `/engine/api/*`.
 - `src/urls.js`: the URL swap, and reading whatever someone pastes.
 - `src/plan.js` and `src/pages.js`: the public reading plan, rendered on the server.
-- `src/auth.js`: the signed session cookie (`__Host-` prefixed, `HttpOnly`, `SameSite=Lax`) and Sign in with GitHub through an OAuth App. It asks for identity only (no scopes). The access token is used once to ask GitHub who you are, then dropped.
+- `src/auth.js`: the signed session cookie (`__Host-` prefixed, `HttpOnly`, `SameSite=Lax`) and Sign in with GitHub through a GitHub App's user authorization. It asks for identity only. The access token is used once to ask GitHub who you are, then dropped.
 - `src/engines.js` and `src/store.js`: one engine per signed-in user. Its reviews and prompts are kept in Postgres, written a moment after each change.
 - `src/reviewer.js` and `src/spend.js`: who reviews. With your own key, it's your provider and model, unmetered. Otherwise it's the free allowance. Before every call to the site's model, the call reserves the most it could cost: its prompt, plus its whole output budget (`max_tokens`). The reservation is refused if it would take you past your daily cap, or everyone past the global one. After the call it's settled at the real cost. A failed call, or one that never settled, counts in full, so the caps hold. Days are UTC. Stage answers are cached by exactly what was asked, so a second review of the same PR head with the default prompts costs nothing.
 - `src/seal.js`: your key is sealed with AES-256-GCM under `PRREVIEW_SEAL_KEY`, bound to your user id. It's only unsealed to make your own calls.
@@ -39,7 +39,7 @@ export PRREVIEW_SESSION_SECRET=$(openssl rand -hex 32) PRREVIEW_SEAL_KEY=$(opens
 npm run dev        # http://localhost:8080, with the local demo login
 ```
 
-`npm run dev` turns on the demo login (`PRREVIEW_DEMO_LOGIN=1`): a throwaway identity, so you can try the guided review without an OAuth App. It's refused when the origin is https, so a deployed site can't have it. Add `OPENROUTER_API_KEY` to turn on the free allowance.
+`npm run dev` turns on the demo login (`PRREVIEW_DEMO_LOGIN=1`): a throwaway identity, so you can try the guided review without a GitHub App. It's refused when the origin is https, so a deployed site can't have it. Add `OPENROUTER_API_KEY` to turn on the free allowance.
 
 ```sh
 npm run lint
@@ -58,7 +58,7 @@ All configuration comes from the environment. In the cluster, secrets live in a 
 | `PRREVIEW_SESSION_SECRET`                                        | Signs session cookies, 32+ characters (required).                                                        |
 | `PRREVIEW_SEAL_KEY`                                              | Seals the keys users bring: `openssl rand -hex 32` (required).                                           |
 | `PRREVIEW_ORIGIN`                                                | The site's origin, such as `https://pr.chrisjowen.net`.                                                  |
-| `PRREVIEW_GITHUB_CLIENT_ID`, `PRREVIEW_GITHUB_CLIENT_SECRET`     | Sign in with GitHub (an OAuth App). Without them, sign-in is closed and the reading plan still works.    |
+| `PRREVIEW_GITHUB_CLIENT_ID`, `PRREVIEW_GITHUB_CLIENT_SECRET`     | Sign in with GitHub (a GitHub App). Without them, sign-in is closed and the reading plan still works.    |
 | `PRREVIEW_GITHUB_TOKEN`                                          | A fine-grained token with public read-only access: 5,000 GitHub API calls an hour instead of 60.         |
 | `OPENROUTER_API_KEY`                                             | Turns on the free AI allowance.                                                                          |
 | `PRREVIEW_AI_MODEL`, `PRREVIEW_AI_LABEL`, `PRREVIEW_AI_BASE_URL` | The allowance's model (default `anthropic/claude-haiku-5.5` on OpenRouter).                              |
@@ -77,10 +77,12 @@ NODE=root@<k3s node> ./deploy/deploy.sh --ingress   # and route pr.chrisjowen.ne
 
 The script builds a `linux/amd64` image and imports it into the node's containerd over SSH, so no registry is needed. It creates the secrets once, on the cluster (`pr-review-db`, plus `pr-review-app` with a generated session secret and seal key), and rolls out the app. With `OPENROUTER_API_KEY` in its environment, the script adds that key to the secret.
 
-To turn on Sign in with GitHub, create an OAuth App at <https://github.com/settings/applications/new>:
+Sign in with GitHub uses a GitHub App's user authorization (a classic OAuth App works the same way). The site only asks who you are, so the App needs:
 
 - **Homepage URL:** `https://pr.chrisjowen.net`
-- **Authorization callback URL:** `https://pr.chrisjowen.net/auth/github/callback`
+- **Callback URL:** `https://pr.chrisjowen.net/auth/github/callback`
+- **Permissions:** none. **Webhook:** inactive. **Request user authorization (OAuth) during installation:** off.
+- **Expire user authorization tokens:** either way. The user token is used once, then dropped.
 
 Then add its client id and secret to the app's secret:
 

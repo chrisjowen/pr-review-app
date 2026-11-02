@@ -68,7 +68,7 @@ describe('sessions', () => {
 		);
 		for (const bad of [
 			`${forged}.${mac}`,
-			`${body}.x${mac.slice(1)}`,
+			`${body}.${mac[0] === 'x' ? 'y' : 'x'}${mac.slice(1)}`,
 			`${body}`,
 			`${body}.${mac}.x`
 		])
@@ -178,6 +178,62 @@ describe('Sign in with GitHub (OAuth App, identity only)', () => {
 		assert.match(done.clear, /Max-Age=0/);
 		assert.equal(gh.calls.length, 2);
 		assert.ok(!JSON.stringify(done).includes('gho_token'));
+	});
+
+	it('works with a GitHub App’s expiring user tokens, keeping neither token', async () => {
+		const fetch = async (url, init = {}) => {
+			if (String(url).endsWith('/login/oauth/access_token'))
+				return Response.json({
+					access_token: 'ghu_expiring',
+					expires_in: 28800,
+					refresh_token: 'ghr_refresh',
+					refresh_token_expires_in: 15897600,
+					token_type: 'bearer',
+					scope: ''
+				});
+			assert.equal(init.headers.authorization, 'Bearer ghu_expiring');
+			return Response.json({ id: 7, login: 'app-user', name: null });
+		};
+		const auth = createAuth({ secret: SECRET, origin: ORIGIN, github, fetch });
+		const s = auth.start('/');
+		const done = await auth.finish(
+			reqWith([s.cookie]),
+			new URLSearchParams({ code: 'any', state: new URL(s.url).searchParams.get('state') })
+		);
+		assert.deepEqual(done.identity, {
+			githubId: 7,
+			login: 'app-user',
+			name: 'app-user',
+			kind: 'github'
+		});
+		assert.ok(!/ghu_|ghr_/.test(JSON.stringify(done)));
+	});
+
+	it('says what went wrong when GitHub sends the browser back with an error', async () => {
+		const auth = createAuth({ secret: SECRET, origin: ORIGIN, github, fetch: fakeGitHub().fetch });
+		const s = auth.start('/');
+		const state = new URL(s.url).searchParams.get('state');
+		await assert.rejects(
+			auth.finish(
+				reqWith([s.cookie]),
+				new URLSearchParams({ error: 'redirect_uri_mismatch<b>', state })
+			),
+			/couldn’t sign you in \(redirect_uri_mismatchb\)/
+		);
+		const wrong = createAuth({
+			secret: SECRET,
+			origin: ORIGIN,
+			github: { ...github, clientSecret: 'wrong' },
+			fetch: async () => Response.json({ error: 'incorrect_client_credentials' })
+		});
+		const w = wrong.start('/');
+		await assert.rejects(
+			wrong.finish(
+				reqWith([w.cookie]),
+				new URLSearchParams({ code: 'c', state: new URL(w.url).searchParams.get('state') })
+			),
+			/misconfigured/
+		);
 	});
 
 	it('refuses a callback whose state isn’t this browser’s', async () => {

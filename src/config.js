@@ -9,7 +9,7 @@
  *   PRREVIEW_SEAL_KEY             seals the keys users bring (openssl rand -hex 32)
  * Optional:
  *   PORT (8080), PRREVIEW_ORIGIN (http://localhost:$PORT)
- *   PRREVIEW_GITHUB_CLIENT_ID, PRREVIEW_GITHUB_CLIENT_SECRET   Sign in with GitHub (an OAuth App)
+ *   PRREVIEW_GITHUB_CLIENT_ID, PRREVIEW_GITHUB_CLIENT_SECRET   Sign in with GitHub (a GitHub App, or an OAuth App)
  *   PRREVIEW_GITHUB_TOKEN         reads public PRs with 5,000 API calls an hour instead of 60
  *   PRREVIEW_DEMO_LOGIN=1         a throwaway demo login, for local use (refused with an https origin)
  *   OPENROUTER_API_KEY            turns on the free AI allowance (or PRREVIEW_AI_API_KEY for another provider)
