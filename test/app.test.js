@@ -340,6 +340,50 @@ describe('the site', dbOptions(), () => {
 		assert.equal((await db.query('SELECT 1 FROM user_keys')).rowCount, 0);
 	});
 
+	it('asks afresh only for the stage the user chose to read again', async () => {
+		const cookie = await signIn('first', '/');
+		const headers = { ...same, cookie };
+		const settle = async (id) => {
+			let r;
+			for (let i = 0; i < 100; i++) {
+				r = await (await get(`/engine/api/reviews/${id}`, { headers: { cookie } })).json();
+				if (!Object.values(r.runs).some((x) => x.state === 'queued' || x.state === 'running'))
+					return r;
+				await new Promise((res) => setTimeout(res, 20));
+			}
+			return r;
+		};
+		const opened = await get('/engine/api/reviews', {
+			method: 'POST',
+			headers,
+			body: JSON.stringify({ url: PR.url })
+		});
+		const { id } = await opened.json();
+		await settle(id);
+		const calls = provider.calls.length;
+		// A run the engine turns down asks nothing afresh: starting over is all cached answers.
+		const bad = await get(`/engine/api/reviews/${id}/run`, {
+			method: 'POST',
+			headers,
+			body: JSON.stringify({ stage: 'no-such-stage' })
+		});
+		assert.equal(bad.status, 404);
+		const restarted = await get(`/engine/api/reviews/${id}`, { method: 'DELETE', headers });
+		assert.equal(restarted.status, 200);
+		assert.equal((await settle(id)).runs.walkthrough.state, 'done');
+		assert.equal(provider.calls.length, calls);
+		// "Read again" asks the model, once, for that stage.
+		const again = await get(`/engine/api/reviews/${id}/run`, {
+			method: 'POST',
+			headers,
+			body: JSON.stringify({ stage: 'walkthrough' })
+		});
+		assert.equal(again.status, 200);
+		const r = await settle(id);
+		assert.equal(r.runs.walkthrough.state, 'done');
+		assert.equal(provider.calls.length, calls + 1);
+	});
+
 	it('forgets a user’s reviews and key on request, but not their spend', async () => {
 		const cookie = await signIn('second', '/');
 		const user = (await db.query('SELECT id FROM users WHERE github_id = 1001')).rows[0].id;

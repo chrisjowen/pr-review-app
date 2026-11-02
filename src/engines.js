@@ -62,7 +62,27 @@ export function createEngines({
 	async function make(user) {
 		const store = await loadStore(db, user.id, { log });
 		for (const r of seeds) store.seed(structuredClone(r));
-		const ctx = { user, store, used: Date.now(), fresh: 0, reviewer: offModel(OFF) };
+		const ctx = { user, store, used: Date.now(), reviewer: offModel(OFF) };
+		/** "Read again": stage passes the engine accepted to run again, each asked afresh when it runs. */
+		const rereads = new Set();
+		const live = (r) => {
+			try {
+				return ctx.reviews.view(r.id) === r;
+			} catch {
+				return false;
+			}
+		};
+		const fresh = () => {
+			for (const e of rereads) {
+				const state = e.r.runs[e.stage]?.state;
+				if (state === 'running') {
+					rereads.delete(e);
+					return true;
+				}
+				if (state !== 'queued' || !live(e.r)) rereads.delete(e);
+			}
+			return false;
+		};
 		const allowance = ai
 			? allowanceModel({
 					ai,
@@ -71,8 +91,7 @@ export function createEngines({
 					cache,
 					fetch,
 					log,
-					// "Read again" asks for a new answer, not the cached one.
-					fresh: () => (ctx.fresh > 0 ? (ctx.fresh--, true) : false)
+					fresh
 				})
 			: null;
 		/** Picks the reviewer again (after the user saves or removes a key). */
@@ -94,8 +113,19 @@ export function createEngines({
 			label: ctx.reviewer.name,
 			where: ctx.own ? 'on your key' : allowance ? 'on the free allowance' : '(live AI off)'
 		});
+		const reviews = {
+			...ctx.reviews,
+			run(id, stage) {
+				const was = ctx.reviews.view(id).runs[stage]?.state;
+				const r = ctx.reviews.run(id, stage);
+				const state = r.runs[stage]?.state;
+				if (was !== 'running' && (state === 'queued' || state === 'running'))
+					rereads.add({ r, stage });
+				return r;
+			}
+		};
 		ctx.handler = createHandler({
-			reviews: ctx.reviews,
+			reviews,
 			store,
 			config: { get: settings, set: settings },
 			version,

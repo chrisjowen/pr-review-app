@@ -249,15 +249,13 @@ export function createApp({
 		// Anything that calls the model (a re-run, a chat question, starting over) is refused up
 		// front when the reviewer can't run now (no live AI, or the allowance is spent), so a kept
 		// review is never thrown away for nothing and the reason shows at once.
-		const run = method === 'POST' && /^\/api\/reviews\/[\w.-]+\/run$/.test(api);
 		const callsModel =
-			run ||
+			(method === 'POST' && /^\/api\/reviews\/[\w.-]+\/run$/.test(api)) ||
 			(method === 'POST' && /^\/api\/reviews\/[\w.-]+\/ask$/.test(api)) ||
 			(method === 'DELETE' && /^\/api\/reviews\/[\w.-]+$/.test(api));
 		if (callsModel) {
 			const ok = await ctx.reviewer.check();
 			if (!ok.ok) return json(res, 409, { error: ok.reason });
-			if (run) ctx.fresh++;
 		}
 		req.url = api + url.search;
 		req.headers.host = '127.0.0.1';
