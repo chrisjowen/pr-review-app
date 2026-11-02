@@ -1,9 +1,9 @@
 {
 	"schema": "pr-review.v1",
 	"id": "chrisjowen__pr-review-wheelhouse__3",
-	"rev": 756,
-	"openedAt": 1793610528810,
-	"updatedAt": 1793610808584,
+	"rev": 921,
+	"openedAt": 1793630943857,
+	"updatedAt": 1793630983396,
 	"pr": {
 		"owner": "chrisjowen",
 		"repo": "pr-review-wheelhouse",
@@ -24,7 +24,7 @@
 		"commits": [
 			{
 				"sha": "d43cb8a44fe0ca48962b10626d586e8c8b142222",
-				"msg": "Declare opensPullRequest on the review tab so Wheelhouse Review links…"
+				"msg": "Declare opensPullRequest on the review tab so Wheelhouse Review links open it"
 			}
 		],
 		"checks": [
@@ -51,9 +51,24 @@
 					"oldStart": 28,
 					"newStart": 28,
 					"lines": [
-						{ "t": " ", "o": 28, "n": 28, "text": "" },
-						{ "t": " ", "o": 29, "n": 29, "text": "## Using it" },
-						{ "t": " ", "o": 30, "n": 30, "text": "" },
+						{
+							"t": " ",
+							"o": 28,
+							"n": 28,
+							"text": ""
+						},
+						{
+							"t": " ",
+							"o": 29,
+							"n": 29,
+							"text": "## Using it"
+						},
+						{
+							"t": " ",
+							"o": 30,
+							"n": 30,
+							"text": ""
+						},
 						{
 							"t": "-",
 							"o": 31,
@@ -64,14 +79,24 @@
 							"n": 31,
 							"text": "The tab lists the project's open pull requests and takes any GitHub PR URL. Nothing is read or reviewed until you click Review. The tab reopens the review you had open last, as the engine kept it, without reading the PR again; **Check for new commits** reads it again with `gh`. `?pr=<number or URL>` on the tab's address does the same for a PR the engine already keeps; any other PR waits in the URL box for your click. The tab declares `opensPullRequest: '?pr={url}'`, so a Review link on a Wheelhouse chat card opens the PR here the same way, and still waits for your click. Older Wheelhouse versions ignore that field."
 						},
-						{ "t": " ", "o": 32, "n": 32, "text": "" },
+						{
+							"t": " ",
+							"o": 32,
+							"n": 32,
+							"text": ""
+						},
 						{
 							"t": " ",
 							"o": 33,
 							"n": 33,
 							"text": "The first time, the tab asks you to **Start the engine**. The engine is the plugin's companion service, a small server on `127.0.0.1` that does the slow work: reading the PR, the reviewer's passes, the chat, and posting. Wheelhouse starts it only on that click. It keeps running after Wheelhouse stops, and it opens a tab that closes itself."
 						},
-						{ "t": " ", "o": 34, "n": 34, "text": "" }
+						{
+							"t": " ",
+							"o": 34,
+							"n": 34,
+							"text": ""
+						}
 					]
 				}
 			],
@@ -91,9 +116,24 @@
 					"oldStart": 41,
 					"newStart": 41,
 					"lines": [
-						{ "t": " ", "o": 41, "n": 41, "text": "\t\t}" },
-						{ "t": " ", "o": 42, "n": 42, "text": "\t});" },
-						{ "t": " ", "o": 43, "n": 43, "text": "" },
+						{
+							"t": " ",
+							"o": 41,
+							"n": 41,
+							"text": "\t\t}"
+						},
+						{
+							"t": " ",
+							"o": 42,
+							"n": 42,
+							"text": "\t});"
+						},
+						{
+							"t": " ",
+							"o": 43,
+							"n": 43,
+							"text": ""
+						},
 						{
 							"t": "+",
 							"n": 44,
@@ -104,17 +144,39 @@
 							"n": 45,
 							"text": "\t\tconst tab = plugin.contributions.find((c) => c.id === 'review');"
 						},
-						{ "t": "+", "n": 46, "text": "\t\tassert.equal(tab.opensPullRequest, '?pr={url}');" },
-						{ "t": "+", "n": 47, "text": "\t});" },
-						{ "t": "+", "n": 48, "text": "" },
+						{
+							"t": "+",
+							"n": 46,
+							"text": "\t\tassert.equal(tab.opensPullRequest, '?pr={url}');"
+						},
+						{
+							"t": "+",
+							"n": 47,
+							"text": "\t});"
+						},
+						{
+							"t": "+",
+							"n": 48,
+							"text": ""
+						},
 						{
 							"t": " ",
 							"o": 44,
 							"n": 49,
 							"text": "\tit('stays within the provider limits Wheelhouse allows', () => {"
 						},
-						{ "t": " ", "o": 45, "n": 50, "text": "\t\tfor (const p of plugin.providers) {" },
-						{ "t": " ", "o": 46, "n": 51, "text": "\t\t\tassert.equal(p.scope, 'project');" }
+						{
+							"t": " ",
+							"o": 45,
+							"n": 50,
+							"text": "\t\tfor (const p of plugin.providers) {"
+						},
+						{
+							"t": " ",
+							"o": 46,
+							"n": 51,
+							"text": "\t\t\tassert.equal(p.scope, 'project');"
+						}
 					]
 				}
 			],
@@ -134,23 +196,52 @@
 					"oldStart": 136,
 					"newStart": 136,
 					"lines": [
-						{ "t": " ", "o": 136, "n": 136, "text": "\t\t\t\tid: 'review'," },
-						{ "t": " ", "o": 137, "n": 137, "text": "\t\t\t\ttitle: 'PR review'," },
-						{ "t": " ", "o": 138, "n": 138, "text": "\t\t\t\tprovider: 'prs'," },
+						{
+							"t": " ",
+							"o": 136,
+							"n": 136,
+							"text": "\t\t\t\tid: 'review',"
+						},
+						{
+							"t": " ",
+							"o": 137,
+							"n": 137,
+							"text": "\t\t\t\ttitle: 'PR review',"
+						},
+						{
+							"t": " ",
+							"o": 138,
+							"n": 138,
+							"text": "\t\t\t\tprovider: 'prs',"
+						},
 						{
 							"t": "+",
 							"n": 139,
 							"text": "\t\t\t\t// Wheelhouse opens a chat card's pull request here; older versions ignore it."
 						},
-						{ "t": "+", "n": 140, "text": "\t\t\t\topensPullRequest: '?pr={url}'," },
+						{
+							"t": "+",
+							"n": 140,
+							"text": "\t\t\t\topensPullRequest: '?pr={url}',"
+						},
 						{
 							"t": " ",
 							"o": 139,
 							"n": 141,
 							"text": "\t\t\t\trender: { element: 'pr-review-tab' }"
 						},
-						{ "t": " ", "o": 140, "n": 142, "text": "\t\t\t}" },
-						{ "t": " ", "o": 141, "n": 143, "text": "\t\t]," }
+						{
+							"t": " ",
+							"o": 140,
+							"n": 142,
+							"text": "\t\t\t}"
+						},
+						{
+							"t": " ",
+							"o": 141,
+							"n": 143,
+							"text": "\t\t],"
+						}
 					]
 				}
 			],
@@ -160,12 +251,17 @@
 	"plan": {
 		"stops": [
 			{
-				"title": "Core change: tab declaration",
-				"files": ["wheelhouse/server/index.js"],
-				"why": "This is the entire functional change — read it first to see exactly what field was added and where."
+				"title": "Tab declaration",
+				"files": [
+					"wheelhouse/server/index.js"
+				],
+				"why": "This is the whole behavioural change: the field on the `review` tab. Read first, since the test and README describe it."
 			}
 		],
-		"skim": ["README.md", "test/manifest.test.js"],
+		"skim": [
+			"README.md",
+			"test/manifest.test.js"
+		],
 		"generated": [],
 		"source": "model"
 	},
@@ -182,90 +278,137 @@
 			"kind": "quality",
 			"title": "Quality pass",
 			"short": "Quality pass",
-			"files": ["wheelhouse/server/index.js"]
+			"files": [
+				"wheelhouse/server/index.js"
+			]
 		},
 		{
 			"id": "stop-1",
 			"kind": "change",
-			"title": "Core change: tab declaration",
-			"short": "Core change: tab declaration",
-			"files": ["wheelhouse/server/index.js"],
-			"why": "This is the entire functional change — read it first to see exactly what field was added and where."
+			"title": "Tab declaration",
+			"short": "Tab declaration",
+			"files": [
+				"wheelhouse/server/index.js"
+			],
+			"why": "This is the whole behavioural change: the field on the `review` tab. Read first, since the test and README describe it."
 		},
 		{
 			"id": "skim",
 			"kind": "skim",
 			"title": "The skim pile",
 			"short": "Skim pile",
-			"files": ["README.md", "test/manifest.test.js"]
+			"files": [
+				"README.md",
+				"test/manifest.test.js"
+			]
 		}
 	],
 	"results": {
 		"walkthrough": {
-			"headline": "Adds an `opensPullRequest` hint to the review tab's contribution so Wheelhouse's chat card can open a PR link without immediately running the review.",
-			"what": "A two-line change in `wheelhouse/server/index.js` adds `opensPullRequest: '?pr={url}'` to the `review` tab's contribution object. This tells the external Wheelhouse plugin how to format the Review link it puts in chat cards. A new test asserts the field is present on the tab, and the README gets one sentence explaining the behavior.",
-			"why": "Wheelhouse (a separate task) needs tabs to explicitly declare how they accept a PR URL via `project.tab` contributions before it will route chat 'Review' links to them.",
+			"headline": "Adds `opensPullRequest: '?pr={url}'` to the `review` tab contribution so Wheelhouse chat-card Review links open that tab with the PR preselected.",
+			"what": "The `review` tab in `wheelhouse/server/index.js` now declares an `opensPullRequest` field with the value `'?pr={url}'` (2 added lines). A new test in `test/manifest.test.js` (5 lines) checks the field, and one README line about opening PRs is updated. The manifest was deliberately left unchanged, and no bundle needs rebuilding because the UI ships as source.",
+			"why": "Wheelhouse (task wh-pr-review-plugin-only) routes a chat card's Review link to a `project.tab` contribution that declares `opensPullRequest`. Without the declaration the Review link has no tab to open.",
 			"evidence": [
 				{
-					"claim": "npm test: 125 pass",
-					"status": "untested",
-					"detail": "Stated in PR description; no test output or CI log shown here, only a generic passing check."
+					"claim": "Full test suite passes",
+					"status": "pass",
+					"detail": "Description reports `npm test`: 125 pass; the `check` status is also pass. I did not see the run output myself."
 				},
 				{
-					"claim": "npm run lint: clean",
-					"status": "untested",
-					"detail": "Stated in PR description, not independently verified from attached evidence."
+					"claim": "Lint is clean",
+					"status": "pass",
+					"detail": "Description reports `npm run lint` clean."
 				},
 				{
-					"claim": "New field is actually read correctly by the tab (PR preselected, nothing runs until click)",
+					"claim": "New test checks the `opensPullRequest` field",
+					"status": "pass",
+					"detail": "5 lines added to `test/manifest.test.js`; it is in the diff, though I have not seen its body."
+				},
+				{
+					"claim": "Tab preselects the PR and waits for a click on a `?pr=` link",
 					"status": "untested",
-					"detail": "Author points to an existing test (`waits for a click before reviewing a ?pr= link it doesn't keep`) as coverage, but that test predates this PR and tests `?pr=` handling, not the new `opensPullRequest` field itself."
+					"detail": "Description cites the existing UI test `waits for a click before reviewing a ?pr= link it doesn't keep`. That test is not in the changed files, so I could not confirm it exists or what it covers."
+				},
+				{
+					"claim": "Wheelhouse actually routes a Review link to this tab",
+					"status": "untested",
+					"detail": "No end-to-end run against Wheelhouse is reported; only the declaration and a field check."
+				},
+				{
+					"claim": "Older Wheelhouse versions ignore the field",
+					"status": "untested",
+					"detail": "Stated in the description without a test or a reference."
 				}
 			],
 			"risks": [
-				"`manifest.json` is deliberately left out of sync with the actual tab contribution (which now has 3 fields vs manifest's 2) — fine today since the manifest test only checks `id`/`slot`, but it's a silent inconsistency a future reader could trip over.",
-				"No evidence the new field was verified against the real Wheelhouse plugin end-to-end — only an internal test that the field exists on the object, not that Wheelhouse parses/uses it as expected.",
-				"Backward-compat claim ('older Wheelhouse versions ignore the field') is asserted, not demonstrated with any test or reference."
+				"Behaviour depends on the host reading `opensPullRequest` as `'?pr={url}'`. Nothing in the repo exercises the host side, so a placeholder or format mismatch would only show up in Wheelhouse.",
+				"The manifest test checks only `id` and `slot`, so the new field lives only in the server code and the new test, not in the manifest. If Wheelhouse reads the manifest rather than the server registration, the declaration would not be seen.",
+				"`{url}` is likely substituted as-is; whether Wheelhouse URL-encodes it is not shown, and the tab reads `?pr=` directly."
+			],
+			"asks": [
+				"Declare `opensPullRequest: '?pr={url}'` on the `review` tab so Wheelhouse Review links open it",
+				"Keep the tab's current behaviour: PR preselected, nothing runs until the user clicks Review",
+				"Leave the manifest alone, since its contributions list only `id` and `slot`",
+				"Add a test that checks the field",
+				"Add a sentence to the README section on opening PRs"
 			],
 			"take": [
-				"This is a very small, additive change: two lines in one file declare a new contribution field (`opensPullRequest`) that an external tool (Wheelhouse) will read to route chat links into this tab's review flow.",
-				"The author's reasoning for *not* touching `manifest.json` is sound given the current manifest test only checks `id`/`slot` — but it does leave the manifest and the actual runtime contribution object out of sync, which is worth a quick gut-check.",
-				"The main gap is validation: everything here confirms the field exists, not that Wheelhouse (the consumer) actually behaves as described when it sees this field. That's expected for a plugin-side PR, but worth calling out explicitly rather than implying it's proven by the existing `?pr=` click-to-review test."
+				"This is a small, low-risk change: two lines declaring the field on the `review` tab, plus a test and a README sentence. The reasoning in the description is sound: the tab already handles `?pr=` without auto-running, so only the declaration was missing.",
+				"What I would check is where the host reads the declaration from. The manifest is untouched and its test covers only `id` and `slot`. If Wheelhouse picks up `project.tab` contributions from the server registration, this is complete. If it reads the manifest, the Review link will still not open the tab.",
+				"The new test sits in `test/manifest.test.js` yet does not test the manifest, so its placement is slightly odd. The 125 passing tests and clean lint are reported, not shown, and the `?pr=` behaviour rests on an existing test I could not see in this diff."
 			],
 			"questions": [
-				"Should `manifest.json` be updated for documentation parity even though its test won't catch a mismatch, so future readers see the full contribution shape in one place?",
-				"Has this actually been exercised against a running Wheelhouse instance (even manually), or is this PR purely shipping the declaration on faith that the consumer reads it as described?"
+				"Does Wheelhouse read `project.tab` contributions from the server registration or from the manifest, and have you seen a Review link open the tab end to end?",
+				"Is `{url}` substituted raw or URL-encoded, and does the tab's `?pr=` parsing handle both?"
 			],
 			"plan": "model"
 		},
 		"quality": {
 			"take": [
-				"This is a tiny, low-risk diff: two lines adding a declarative `opensPullRequest` field with a comment explaining backward compatibility. There's not much surface area for nesting, duplication, or naming issues here.",
-				"The only thing worth a second look is the value format itself — a template-like string `'?pr={url}'` that implies some parsing/templating convention elsewhere, which isn't visible in this diff."
+				"The source diff is two added lines: a comment and `opensPullRequest: '?pr={url}'` on the `review` tab, in the same place as the other tab properties. There is no nesting, duplication or long function to criticise, so I have no structural concerns.",
+				"The one thing worth a card is naming and the comment. The field name says what it does, and the comment explains why the field is there and that older Wheelhouse versions ignore it. That is the kind of comment that saves a future reader a search."
 			],
-			"findings": [
+			"cards": [
 				{
-					"id": "q1",
-					"title": "Templated string format is implicit/unverifiable here",
-					"level": "nit",
+					"id": "quality:c1",
+					"stage": "quality",
+					"verdict": "lgtm",
+					"secondary": null,
+					"severity": null,
+					"title": "Declarative one-line field with a comment that explains why",
+					"why": "Adds `opensPullRequest: '?pr={url}'` next to the other tab properties (`id`, `title`, `provider`, `render`), so the tab declaration stays flat and readable. The comment says what Wheelhouse does with the field and that older versions ignore it, which is the part a reader can't infer from the name. The `{url}` placeholder is easy to read and no logic is added to the plugin.",
+					"suggestion": "",
+					"ask": 1,
+					"asked": "",
 					"file": "wheelhouse/server/index.js",
-					"from": 140,
+					"from": 139,
 					"to": 140,
-					"body": "The value `'?pr={url}'` implies a placeholder convention (`{url}`) that must be parsed somewhere else in the codebase. Nothing in this diff shows that parser, so it's hard to confirm the format is correct or consistently used elsewhere.",
-					"suggestion": "Add a one-line reference in the comment to where `{url}` is substituted, or link to the type/schema that defines this field's expected format."
+					"blocks": [
+						{
+							"file": "wheelhouse/server/index.js",
+							"from": 139,
+							"to": 140
+						}
+					],
+					"take": "This is as small and clear as a change like this gets. The field follows the existing shape of the tab object and the comment adds real information.",
+					"questions": [
+						"Is `{url}` the only placeholder Wheelhouse supports, or should the comment list others?"
+					]
 				}
 			],
+			"findings": [],
 			"questions": [
-				"Is `opensPullRequest`'s `{url}` placeholder format validated/parsed anywhere, and is this the same convention used by other tabs or plugins?"
+				"Should the `?pr={url}` string live in a named constant if the README and the test will repeat it?",
+				"Do you want the test to assert the exact string, or only that the field is present?"
 			]
 		},
 		"stop-1": {
 			"take": [
-				"This is about as small as a functional PR gets: two added lines, one comment and one new field on an existing tab config object. No logic changes, no new code paths exercised inside this repo — it's purely a declarative hint consumed by something external (Wheelhouse's chat card).",
-				"The entire correctness question lives outside this file: does Wheelhouse actually read `opensPullRequest` and interpolate `{url}` the way this comment implies? Nothing here proves that contract — it's just the producer side of an interface."
+				"This stop is a two-line change: a comment and one new field, `opensPullRequest: '?pr={url}'`, on the `review` tab contribution in `wheelhouse/server/index.js`. Everything else in the PR (the test, the README sentence) hangs off this declaration.",
+				"The tab's other fields (`id`, `provider`, `render`) are untouched, so the existing behaviour is kept by construction. I can't confirm from this diff that a test or README change exists, because only this file is shown for this stop."
 			],
 			"complexity": "simple",
-			"rationale": "Two added lines, no control flow, no new behavior triggered within this repo — just a config field.",
+			"rationale": "One declarative field and a comment on an existing object, with no logic and no control flow.",
 			"notes": [
 				{
 					"id": "n1",
@@ -273,91 +416,176 @@
 					"from": 139,
 					"to": 140,
 					"tag": "simple",
-					"title": "New `opensPullRequest` hint on the review tab",
-					"body": "Adds a template string `'?pr={url}'` plus a comment explaining intent: Wheelhouse can use this to construct a link that opens the PR directly, and the field is additive so older Wheelhouse versions that don't know about it simply ignore the extra key. This is the whole functional change.",
-					"concern": "The format and semantics of `{url}` (is it the full PR URL, URL-encoded or not, appended to what base) aren't defined or enforced anywhere in this file — the contract lives entirely in Wheelhouse's code, which isn't part of this diff, so there's no way to verify correctness from here alone."
+					"title": "Looks good: `opensPullRequest` declared on the `review` tab, which is all the feature needs",
+					"body": "The change adds a `?pr={url}` template to the tab contribution so Wheelhouse can fill in the PR URL and open the tab with it preselected. It sits next to the other tab fields and leaves `render` and `provider` alone, so the click-to-run behaviour is unchanged. The comment says older Wheelhouse versions ignore the field, which is the key compatibility point. I did not find a test for the field in this stop's files, so acceptance item 4 is unverified from here.",
+					"concern": ""
 				}
 			],
 			"alternatives": [
 				{
-					"title": "Keep the string-template convention (what's shipped)",
-					"pros": "Matches a simple, serializable config shape; easy for Wheelhouse to parse generically across tabs without custom code per plugin.",
-					"cons": "No validation of placeholder names or encoding rules; easy to typo `{url}` or drift from whatever Wheelhouse expects with zero compile-time or runtime check.",
+					"title": "Keep the plain string template as in the PR",
+					"pros": "It is minimal, declarative and matches the existing contribution shape. Older Wheelhouse versions simply ignore it.",
+					"cons": "The template is an untyped string, so a typo in `{url}` fails silently.",
 					"verdict": "recommend"
 				},
 				{
-					"title": "Structured object instead of a template string, e.g. `opensPullRequest: { param: 'pr', value: 'url' }`",
-					"pros": "Removes string-templating ambiguity, easier to validate/schema-check on both sides.",
-					"cons": "More ceremony for a one-field hint; only worth it if other tabs will need similar but varying templates.",
-					"verdict": "consider"
+					"title": "Define the template as a named constant and share it with the test",
+					"pros": "The test and the declaration cannot drift apart, and the placeholder name is defined once.",
+					"cons": "It adds indirection for a single-use string, and the test then proves less because it reads the same constant it checks.",
+					"verdict": "later"
 				}
 			],
-			"pick": "Stick with the string-template approach shipped here — it's proportionate to the problem size, assuming this already matches an established convention elsewhere in Wheelhouse's tab schema.",
+			"pick": "I would keep the PR's approach. It is declarative, backward compatible and the smallest change that works. The only extra I'd want is a test that asserts the literal string, so a typo can't slip through.",
+			"cards": [
+				{
+					"id": "stop-1:c1",
+					"stage": "stop-1",
+					"verdict": "lgtm",
+					"secondary": "untested",
+					"severity": null,
+					"title": "`opensPullRequest` declared on the `review` tab, which is all the feature needs",
+					"why": "The change adds a `?pr={url}` template to the tab contribution so Wheelhouse can fill in the PR URL and open the tab with it preselected. It sits next to the other tab fields and leaves `render` and `provider` alone, so the click-to-run behaviour is unchanged. The comment says older Wheelhouse versions ignore the field, which is the key compatibility point. I did not find a test for the field in this stop's files, so acceptance item 4 is unverified from here.",
+					"suggestion": "Confirm the test exists elsewhere in the PR and asserts the exact string `?pr={url}` on the tab with `id: 'review'`. Also check that the `pr-review-tab` element reads the `pr` query parameter and does not auto-run.",
+					"ask": 4,
+					"asked": "",
+					"file": "wheelhouse/server/index.js",
+					"from": 139,
+					"to": 140,
+					"blocks": [
+						{
+							"file": "wheelhouse/server/index.js",
+							"from": 139,
+							"to": 140
+						}
+					],
+					"take": "This is the entire behavioural change: a literal template string on the tab. It's small and sits in the right place, but nothing in this stop shows the test or the consumer side.",
+					"questions": [
+						"Does `pr-review-tab` already handle a `pr` query parameter, or is that handled elsewhere in this PR?",
+						"Is `{url}` URL-encoded by Wheelhouse before substitution, given PR URLs contain `/` and `:`?"
+					]
+				}
+			],
 			"questions": [
-				"Is `{url}` guaranteed to arrive already URL-encoded from Wheelhouse, or does this plugin need to encode it?",
-				"Is there a shared schema/type definition for tab declarations that should document `opensPullRequest` so other tabs pick up the same convention consistently?"
+				"Where is the test for this field, and does it assert the literal `?pr={url}` string?",
+				"Does the tab truly wait for the Review click when opened with `?pr=`, so acceptance item 2 holds?"
 			]
 		},
 		"skim": {
 			"take": [
-				"Just docs and a manifest test left — the actual `opensPullRequest` declaration lives in `wheelhouse/server/index.js`, already covered in the earlier stop. Nothing here changes runtime behaviour beyond what that file does; this is documentation catching up and a test locking the contract.",
-				"Both remaining files are low risk and consistent with each other: the README line matches what the test asserts. No surprises, no untested behaviour introduced here."
+				"Small, focused PR. Only two files remain after the one you already read: a README sentence and a manifest test. Neither changes runtime behaviour, so the risk is low. Both match acceptance items 4 and 5.",
+				"The test reads the field from `plugin.contributions` but cannot show that the tab actually handles `?pr=` from a Wheelhouse link. The 'nothing runs until you click' claim in the README rests on existing behaviour, and I did not find a test for it in this diff."
 			],
 			"files": [
 				{
 					"file": "README.md",
 					"risk": "low",
-					"note": "Documents the new `opensPullRequest: '?pr={url}'` declaration and notes older Wheelhouse versions just ignore it."
+					"note": "Adds a sentence saying the tab declares `opensPullRequest: '?pr={url}'`, that Review links open the PR here and wait for a click, and that older Wheelhouse versions ignore it."
 				},
 				{
 					"file": "test/manifest.test.js",
 					"risk": "low",
-					"note": "Adds a test asserting the review tab's `opensPullRequest` equals `'?pr={url}'`, locking the manifest contract."
+					"note": "New test asserts the `review` contribution has `opensPullRequest` equal to `'?pr={url}'`."
+				}
+			],
+			"cards": [
+				{
+					"id": "skim:c1",
+					"stage": "skim",
+					"verdict": "untested",
+					"secondary": null,
+					"severity": null,
+					"title": "Test checks the declared string, not that the tab honours it",
+					"why": "The new test only asserts that the manifest field equals `'?pr={url}'`. It does not check that the tab reads `?pr=` from a link built from that template, or that nothing runs before the click. Acceptance item 2 (PR preselected, nothing runs until Review) is therefore only covered by whatever tests exist elsewhere, and I did not find one in this diff. The test also looks the tab up with `find` and does not guard against a missing `review` entry, so a rename would fail with a `TypeError` rather than a clear message.",
+					"suggestion": "Assert the tab exists first (`assert.ok(tab)`). If the `?pr=` parsing lives in a testable function, add a test that feeds it the template output for a PR URL and checks that it preselects the PR without starting a review.",
+					"ask": 4,
+					"asked": "",
+					"file": "test/manifest.test.js",
+					"from": 44,
+					"to": 47,
+					"blocks": [
+						{
+							"file": "test/manifest.test.js",
+							"from": 44,
+							"to": 47
+						}
+					],
+					"take": "This pins the string, which is what item 4 asked for. It would not catch the tab ignoring `?pr=`, though, and a missing `review` entry gives a poor failure message.",
+					"questions": [
+						"Is there an existing test that covers `?pr=` preselecting a PR without starting a review?",
+						"Is a literal-string assertion enough, or should the test also check how Wheelhouse fills in `{url}`?"
+					]
+				},
+				{
+					"id": "skim:c2",
+					"stage": "skim",
+					"verdict": "explain",
+					"secondary": null,
+					"severity": null,
+					"title": "README documents the new field and its fallback on older versions",
+					"why": "The added sentence says Review links on chat cards open the PR in the tab the same way `?pr=` does, that they still wait for a click, and that older Wheelhouse versions ignore the field. This meets item 5 and states the backward-compatibility behaviour, which is useful. The 'older versions ignore it' claim depends on how Wheelhouse treats unknown fields, and nothing in this diff shows that.",
+					"suggestion": "",
+					"ask": 5,
+					"asked": "",
+					"file": "README.md",
+					"from": 31,
+					"to": 31,
+					"blocks": [
+						{
+							"file": "README.md",
+							"from": 31,
+							"to": 31
+						}
+					],
+					"take": "The sentence is accurate to the PR's intent and covers the old-version case. The paragraph is getting long, and the compatibility claim is an assumption about Wheelhouse itself.",
+					"questions": [
+						"Has anyone checked that an older Wheelhouse really ignores an unknown contribution field rather than rejecting the manifest?"
+					]
 				}
 			],
 			"questions": [
-				"Is the `opensPullRequest` field itself (not just this test) covered by a test against the actual manifest file on disk, or only against the `plugin` object in memory?",
-				"Does anything verify that older Wheelhouse versions genuinely ignore an unknown manifest field, or is that just an assumption stated in the README?"
+				"Is the `{url}` placeholder documented or validated on the Wheelhouse side, or does this plugin rely on convention?",
+				"Does anything beyond this string check confirm the tab waits for a click when opened through a Review link?"
 			]
 		}
 	},
 	"runs": {
 		"walkthrough": {
 			"state": "done",
-			"tokens": 1866,
-			"model": "claude sonnet",
-			"at": 1793610562804,
-			"promptTokens": 1592,
-			"ms": 24577
+			"tokens": 1508,
+			"model": "anthropic/claude-sonnet-5.5",
+			"at": 1793630943858,
+			"promptTokens": 1119,
+			"ms": 13296
 		},
 		"quality": {
 			"state": "done",
-			"tokens": 396,
-			"model": "claude sonnet",
-			"at": 1793610635663,
-			"promptTokens": 1252,
-			"ms": 8978
+			"tokens": 532,
+			"model": "anthropic/claude-sonnet-5.5",
+			"at": 1793630957155,
+			"promptTokens": 1535,
+			"ms": 5923
 		},
 		"stop-1": {
 			"state": "done",
-			"tokens": 1757,
-			"model": "claude sonnet",
-			"at": 1793610710482,
-			"promptTokens": 1523,
-			"ms": 23866
+			"tokens": 1050,
+			"model": "anthropic/claude-sonnet-5.5",
+			"at": 1793630963079,
+			"promptTokens": 1790,
+			"ms": 9341
 		},
 		"skim": {
 			"state": "done",
-			"tokens": 397,
-			"model": "claude sonnet",
-			"at": 1793610800398,
-			"promptTokens": 1800,
-			"ms": 8167
+			"tokens": 1194,
+			"model": "anthropic/claude-sonnet-5.5",
+			"at": 1793630972420,
+			"promptTokens": 2203,
+			"ms": 10976
 		}
 	},
 	"chat": {},
 	"requests": [],
 	"decisions": {},
+	"cardDecisions": {},
 	"reviewed": [],
 	"posted": null,
 	"previous": null
