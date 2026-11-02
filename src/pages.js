@@ -52,7 +52,7 @@ ${description ? `<meta name="description" content="${esc(description)}">` : ''}
 <main class="${wide ? 'wide' : ''}">
 ${body}
 </main>
-${bare ? '' : `<footer class="foot"><p>PR review for humans reads public pull requests and never posts to GitHub. It shares its review engine with the <a href="https://github.com/chrisjowen/pr-review-wheelhouse">pr-review-wheelhouse</a> plugin; the site’s own code is <a href="https://github.com/chrisjowen/pr-review-app">open source</a>. ${esc(origin.replace(/^https?:\/\//, ''))}</p></footer>`}
+${bare ? '' : `<footer class="foot"><p>PR review for humans reads public pull requests, and posts to GitHub only a review you confirm, as you. It shares its review engine with the <a href="https://github.com/chrisjowen/pr-review-wheelhouse">pr-review-wheelhouse</a> plugin; the site’s own code is <a href="https://github.com/chrisjowen/pr-review-app">open source</a>. ${esc(origin.replace(/^https?:\/\//, ''))}</p></footer>`}
 </body>
 </html>`;
 }
@@ -100,14 +100,14 @@ export function marketingPage({ user, origin, demo, caps, aiOn }) {
 <section class="band split">
   <div>
     <h2>Then a second pair of eyes, if you want one</h2>
-    <p class="sub">Sign in with GitHub to start a guided review. It walks you through the PR in stages, and a reviewer sits beside the code to talk each one through.</p>
+    <p class="sub">Sign in with GitHub to start a guided review: one card per change, each with a plain verdict, and a review mate beside every card to talk it through.</p>
     <ol class="stages">
       <li><b>Walkthrough.</b> What the PR does and why, the evidence it claims, where the files went.</li>
-      <li><b>Quality pass.</b> Readability only: nesting, long functions, duplication, names. Keep or dismiss each note.</li>
-      <li><b>Stops.</b> The important changes, with notes pinned above the lines, alternatives, and the reviewer’s pick.</li>
-      <li><b>Skim pile.</b> One line and a risk level for everything else.</li>
+      <li><b>Key changes.</b> The changes that matter, one card each: a verdict (looks good, exemplary, code smell, possible security issue, not well tested…), why, a suggestion for problems, and the code with the key lines lit.</li>
+      <li><b>Quality pass.</b> Every concern in one checklist, so nothing slips through.</li>
+      <li><b>Skim pile.</b> The small stuff, a card each; generated files stay hidden.</li>
     </ol>
-    <p class="fine">You decide. Questions and change requests pin to lines; <b>Finish review</b> drafts your verdict, and you copy it as Markdown. Nothing is posted anywhere.</p>
+    <p class="fine">You decide: accept, disagree or comment on each card, and say when a disagreement is worth remembering. <b>Finish review</b> drafts your verdict; post it to the pull request as you, after you’ve seen it, or copy it as Markdown.</p>
   </div>
   <figure class="shot"><img src="/static/stop-web.png" alt="A stop in the guided review: a reviewer note pinned above the lines it discusses" loading="lazy"><figcaption>A stop: notes pinned above the lines they discuss.</figcaption></figure>
 </section>
@@ -222,7 +222,7 @@ export function prPage({ user, origin, pr, files, checksKnown, demo, signin, lim
 
 	const reviewNote = demo
 		? 'A guided review of this PR is pre-generated, so you can try every stage.'
-		: 'A walkthrough, a quality pass, the key changes a few files at a time, a skim pile, and a reviewer to talk it through.';
+		: 'A walkthrough, then one card per change with a plain verdict, the key changes first, every concern in a checklist, and a review mate beside each card.';
 	const ctaButton =
 		user || signin
 			? `<a class="btn primary block" href="${esc(cta)}">${user ? 'Start the guided review →' : 'Sign in to review →'}</a>`
@@ -357,7 +357,7 @@ export function accountPage({ user, origin, status: s, providers, error, saved }
   </div>
   <div class="card">
     <h2>Your data</h2>
-    <p class="dim">This site keeps your GitHub username, your reviews, your prompts and your key (sealed). Forgetting deletes the reviews, prompts and key; your username and today’s allowance use stay.</p>
+    <p class="dim">This site keeps your GitHub username, your reviews, your prompts, your key (sealed) and, while you’re signed in, your GitHub sign-in token (sealed), so a review you confirm can be posted as you. Signing out deletes the token. Forgetting deletes the reviews, prompts, key and token; your username and today’s allowance use stay.</p>
     <form method="post" action="/account/forget"><button class="btn">Forget my reviews and key</button></form>
   </div>
 </section>`;

@@ -241,10 +241,6 @@ export function createApp({
 		if (method !== 'GET' && !sameOrigin(req))
 			return json(res, 403, { error: 'Requests must come from this site.' });
 		const api = url.pathname.slice('/engine'.length);
-		if (method === 'POST' && /^\/api\/reviews\/[\w.-]+\/post$/.test(api))
-			return json(res, 403, {
-				error: 'This site doesn’t post to GitHub. Copy the review as Markdown instead.'
-			});
 		const ctx = await engines.get(user);
 		// Anything that calls the model (a re-run, a chat question, starting over) is refused up
 		// front when the reviewer can't run now (no live AI, or the allowance is spent), so a kept
@@ -375,11 +371,13 @@ export function createApp({
 				);
 			}
 			const u = await users.upsert(done.identity);
+			await users.saveGithubToken(u.id, done.token);
 			log(`signed in: user ${u.id} (${u.login})`);
 			return redirect(res, done.next, [auth.issue(u), done.clear]);
 		}
 		if (method === 'POST' && p === '/auth/signout') {
 			if (!sameOrigin(req)) return send(res, 403, 'Forbidden', 'text/plain; charset=utf-8');
+			if (user) await users.clearGithubToken(user.id);
 			return redirect(res, '/', [auth.signOut()]);
 		}
 

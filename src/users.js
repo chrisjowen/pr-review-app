@@ -1,7 +1,8 @@
 /**
- * Users and the keys they bring. A GitHub user is found by their GitHub id
- * (their login can change); a demo user is new each time. A key is checked,
- * sealed for its owner and only ever unsealed to make that owner's calls.
+ * Users, the keys they bring and their GitHub tokens. A GitHub user is found
+ * by their GitHub id (their login can change); a demo user is new each time.
+ * A key or token is sealed for its owner and only ever unsealed to make that
+ * owner's calls.
  */
 
 import { MODEL_NAME, PROVIDERS } from './reviewer.js';
@@ -74,13 +75,40 @@ export function createUsers({ db, sealer }) {
 			await db.query('DELETE FROM user_keys WHERE user_id = $1', [userId]);
 		},
 
+		/** Keeps the user's GitHub token (from signing in, or renewing it), sealed. */
+		async saveGithubToken(userId, token) {
+			await db.query(
+				`INSERT INTO user_github_tokens (user_id, sealed, updated_at) VALUES ($1, $2, now())
+				 ON CONFLICT (user_id) DO UPDATE SET sealed = EXCLUDED.sealed, updated_at = now()`,
+				[userId, sealer.seal(JSON.stringify(token), `${userId}:github`)]
+			);
+		},
+
+		/** The user's GitHub token, unsealed; null if none or it no longer opens. */
+		async githubToken(userId) {
+			const { rows } = await db.query('SELECT sealed FROM user_github_tokens WHERE user_id = $1', [
+				userId
+			]);
+			const text = rows[0] ? sealer.unseal(rows[0].sealed, `${userId}:github`) : null;
+			try {
+				const t = text ? JSON.parse(text) : null;
+				return typeof t?.access === 'string' && t.access ? t : null;
+			} catch {
+				return null;
+			}
+		},
+
+		async clearGithubToken(userId) {
+			await db.query('DELETE FROM user_github_tokens WHERE user_id = $1', [userId]);
+		},
+
 		/**
-		 * Forgets what is kept for a user: their reviews, prompts and key. The user row and
+		 * Forgets what is kept for a user: their reviews, prompts, key and GitHub token. The user row and
 		 * the spend ledger stay, so signing in again doesn't reset today's allowance.
 		 */
 		async forget(userId) {
 			await db.tx(async (c) => {
-				for (const table of ['reviews', 'user_prompts', 'user_keys'])
+				for (const table of ['reviews', 'user_prompts', 'user_keys', 'user_github_tokens'])
 					await c.query(`DELETE FROM ${table} WHERE user_id = $1`, [userId]);
 			});
 		}

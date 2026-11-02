@@ -13,7 +13,7 @@ const el = document.createElement('pr-review-tab');
 el.host = {
 	service: async () => ({ state: 'running', url: `${window.location.origin}/engine` }),
 	launch: async () => {},
-	features: { post: false, firstmate: false, markdown: true, autoOpen: true }
+	features: { post: true, firstmate: false, markdown: true, autoOpen: true }
 };
 el.entry = { projectId: 'web' };
 el.data = { project: 'web', prs: [], settings: JSON.parse(slot.dataset.settings || '{}') };

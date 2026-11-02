@@ -1,7 +1,8 @@
 /**
  * One shared engine per signed-in user, made when they first use it: their
- * own reviews and prompts (a Postgres-backed store), the site's GitHub reader,
- * and the reviewer they get (their key, else the free allowance, else none).
+ * own reviews and prompts (a Postgres-backed store), the site's GitHub reader
+ * (posting as them), and the reviewer they get (their key, else the free
+ * allowance, else none).
  * The demo reviews, pre-generated, are added to each user's store so every
  * stage of them can be tried at no cost. An engine nobody has used for a
  * while, with nothing queued, is written out and let go.
@@ -37,7 +38,8 @@ export function readSeeds(dir) {
  * @param {{
  *   db: any; users: ReturnType<typeof import('./users.js').createUsers>;
  *   spend: ReturnType<typeof import('./spend.js').createSpend>;
- *   cache: any; github: any; ai: any; seeds?: any[]; version: string;
+ *   cache: any; github: any; poster?: ReturnType<typeof import('./post.js').createPoster>;
+ *   ai: any; seeds?: any[]; version: string;
  *   log?: (line: string) => void; idleMs?: number; fetch?: typeof fetch;
  * }} o
  */
@@ -47,6 +49,7 @@ export function createEngines({
 	spend,
 	cache,
 	github,
+	poster,
 	ai,
 	seeds = [],
 	version,
@@ -103,7 +106,7 @@ export function createEngines({
 		await ctx.refresh();
 		const model = () => ctx.reviewer;
 		ctx.reviews = createReviews({
-			github,
+			github: poster ? { ...github, post: (pr, review) => poster.post(user, pr, review) } : github,
 			store,
 			model,
 			log: (l) => log(`[user ${user.id}] ${l}`)
