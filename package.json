@@ -19,7 +19,7 @@
 	},
 	"dependencies": {
 		"pg": "^8.23.1",
-		"pr-review-wheelhouse": "git+https://github.com/chrisjowen/pr-review-wheelhouse.git#491a77da8e7c2bd3307233aad3900655399c86e2"
+		"pr-review-wheelhouse": "git+https://github.com/chrisjowen/pr-review-wheelhouse.git#6877754691866a1fff77c7672d677c60a6783acb"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
