@@ -1,0 +1,106 @@
+# Nightly Postgres backups. Each night at 03:17 UTC:
+#  1. `dump` writes a pg_dump (custom format) to the `backups` volume on the node, keeping 14 days;
+#  2. `offbox` copies it off the node with rclone, to BACKUP_REMOTE, keeping 30 days there.
+# The off-box target is configured only in the secret `pr-review-backup` (never committed): rclone's
+# environment config, e.g. for any S3-compatible bucket (Backblaze B2, Cloudflare R2, AWS S3)
+# wrapped in an rclone `crypt` remote so the dumps are encrypted before they leave:
+#   BACKUP_REMOTE=sealed:
+#   RCLONE_CONFIG_OFFBOX_TYPE=s3  RCLONE_CONFIG_OFFBOX_PROVIDER=Cloudflare
+#   RCLONE_CONFIG_OFFBOX_ACCESS_KEY_ID=…  RCLONE_CONFIG_OFFBOX_SECRET_ACCESS_KEY=…  RCLONE_CONFIG_OFFBOX_ENDPOINT=…
+#   RCLONE_CONFIG_SEALED_TYPE=crypt  RCLONE_CONFIG_SEALED_REMOTE=offbox:<bucket>/pr-review
+#   RCLONE_CONFIG_SEALED_PASSWORD=<rclone obscure output>
+# Until that secret exists the job fails at the off-box step, so a missing off-box copy is visible.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backups
+  namespace: pr-review
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: pr-review
+spec:
+  schedule: '17 3 * * *'
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels: { app: pr-review-backup }
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            fsGroup: 70
+            seccompProfile: { type: RuntimeDefault }
+          initContainers:
+            - name: dump
+              image: postgres:17-alpine
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  # A new pod is let through the network policy a moment after it starts.
+                  i=0; until pg_isready -h postgres -t 2 >/dev/null; do i=$((i+1)); [ $i -lt 60 ] || exit 1; sleep 1; done
+                  rm -f /backup/*.part
+                  name="prreview-$(date -u +%Y%m%dT%H%M%SZ).dump"
+                  pg_dump -h postgres -U prreview -d prreview -Fc -f "/backup/$name.part"
+                  mv "/backup/$name.part" "/backup/$name"
+                  echo "$name" > /backup/LATEST
+                  find /backup -name 'prreview-*' -mtime +14 -delete
+                  ls -l /backup
+              env:
+                - name: PGPASSWORD
+                  valueFrom: { secretKeyRef: { name: pr-review-db, key: password } }
+              volumeMounts: [{ name: backups, mountPath: /backup }]
+              securityContext: &locked
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+          containers:
+            - name: offbox
+              image: rclone/rclone:1.71
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  if [ -z "${BACKUP_REMOTE:-}" ]; then
+                    echo "No off-box target (secret pr-review-backup, BACKUP_REMOTE): tonight's dump is on this node only." >&2
+                    exit 1
+                  fi
+                  name="$(cat /backup/LATEST)"
+                  rclone copyto "/backup/$name" "$BACKUP_REMOTE/$name"
+                  rclone delete --min-age 30d "$BACKUP_REMOTE"
+                  echo "copied $name off the node"
+              env:
+                - { name: XDG_CONFIG_HOME, value: /tmp }
+                - { name: HOME, value: /tmp }
+              envFrom:
+                - secretRef: { name: pr-review-backup, optional: true }
+              volumeMounts:
+                - { name: backups, mountPath: /backup, readOnly: true }
+                - { name: tmp, mountPath: /tmp }
+              securityContext: *locked
+          volumes:
+            - name: backups
+              persistentVolumeClaim: { claimName: backups }
+            - name: tmp
+              emptyDir: {}

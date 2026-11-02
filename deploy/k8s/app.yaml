@@ -1,0 +1,70 @@
+# The web app, in namespace pr-review (after postgres.yaml). The image is imported straight into
+# k3s's containerd by deploy.sh (no registry), hence imagePullPolicy: Never.
+# Secrets come from `pr-review-app`, made on the cluster by deploy.sh and never committed:
+#   DATABASE_URL, PRREVIEW_SESSION_SECRET, PRREVIEW_SEAL_KEY, OPENROUTER_API_KEY, and, once they
+#   exist, PRREVIEW_GITHUB_CLIENT_ID / PRREVIEW_GITHUB_CLIENT_SECRET / PRREVIEW_GITHUB_TOKEN.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: pr-review
+  labels: { app: pr-review-app }
+spec:
+  # One replica: each user's review engine lives in the process.
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: pr-review-app }
+  template:
+    metadata:
+      labels: { app: pr-review-app }
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: web
+          image: pr-review-app:IMAGE_TAG
+          imagePullPolicy: Never
+          ports: [{ containerPort: 8080, name: http }]
+          env:
+            - { name: PRREVIEW_ORIGIN, value: https://pr.chrisjowen.net }
+            - { name: PRREVIEW_AI_MODEL, value: anthropic/claude-haiku-5.5 }
+            - { name: PRREVIEW_AI_LABEL, value: Claude Haiku 5.5 }
+            - { name: PRREVIEW_AI_PRICE_IN, value: '0.10' }
+            - { name: PRREVIEW_AI_PRICE_OUT, value: '0.50' }
+            - { name: PRREVIEW_QUOTA_USER_USD, value: '0.25' }
+            - { name: PRREVIEW_QUOTA_GLOBAL_USD, value: '10' }
+          envFrom:
+            - secretRef: { name: pr-review-app }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 30
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: pr-review
+spec:
+  selector: { app: pr-review-app }
+  ports: [{ port: 80, targetPort: http, name: http }]

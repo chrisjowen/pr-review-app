@@ -1,0 +1,31 @@
+{
+	"name": "pr-review-app",
+	"version": "1.0.0",
+	"private": true,
+	"description": "PR review for humans, against agent-generated code. Swap github.com for pr.chrisjowen.net on any pull request.",
+	"license": "MIT",
+	"author": "Chris Owen",
+	"repository": "github:chrisjowen/pr-review-app",
+	"type": "module",
+	"engines": {
+		"node": ">=22"
+	},
+	"scripts": {
+		"start": "node src/server.js",
+		"dev": "PRREVIEW_DEMO_LOGIN=1 node --watch src/server.js",
+		"lint": "eslint . && prettier --check .",
+		"format": "prettier --write .",
+		"test": "node --test"
+	},
+	"dependencies": {
+		"pg": "^8.23.1",
+		"pr-review-wheelhouse": "git+https://github.com/chrisjowen/pr-review-wheelhouse.git#491a77da8e7c2bd3307233aad3900655399c86e2"
+	},
+	"devDependencies": {
+		"@eslint/js": "^10.0.1",
+		"eslint": "^10.14.0",
+		"globals": "^17.14.0",
+		"happy-dom": "^21.0.4",
+		"prettier": "^3.9.10"
+	}
+}
