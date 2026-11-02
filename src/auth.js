@@ -2,9 +2,9 @@
  * Who is signed in: an HMAC-signed session cookie naming the user. Two ways in:
  *
  * - Sign in with GitHub, through a GitHub App's user authorization (or a
- *   classic OAuth App: the same web flow). Identity only: no scopes, and the
- *   user token is used once to ask who you are, then dropped, so it doesn't
- *   matter whether the App's user tokens expire or come with a refresh token.
+ *   classic OAuth App: the same web flow). The user token asks who you are,
+ *   and is handed back (with its refresh token, when the App's tokens expire)
+ *   to be kept sealed, so a review you confirm can be posted as you.
  * - A demo login, for running the app on your own machine before a GitHub App
  *   exists. It is off unless PRREVIEW_DEMO_LOGIN=1, and never on with an https
  *   origin, so a deployed site can't mint throwaway identities.
@@ -144,8 +144,8 @@ export function createAuth({
 
 		/**
 		 * Checks the callback against this browser's state, trades the code for a token,
-		 * and asks GitHub who this is. The token isn't kept.
-		 * @returns {Promise<{ identity: { githubId: number; login: string; name: string; kind: 'github' }; next: string; clear: string }>}
+		 * and asks GitHub who this is.
+		 * @returns {Promise<{ identity: { githubId: number; login: string; name: string; kind: 'github' }; token: GitHubToken; next: string; clear: string }>}
 		 */
 		async finish(req, query) {
 			if (!enabled) throw new Error('Sign in with GitHub isn’t set up here.');
@@ -203,9 +203,45 @@ export function createAuth({
 					name: typeof me.name === 'string' && me.name ? me.name : me.login,
 					kind: 'github'
 				},
+				token: tokenOf(tok),
 				next: safeNext(saved.next),
 				clear: cookie(STATE, '', 0)
 			};
+		},
+
+		/**
+		 * A new user token from a refresh token (a GitHub App's expiring tokens).
+		 * @returns {Promise<GitHubToken>}
+		 */
+		async refresh(refreshToken) {
+			if (!enabled) throw new Error('Sign in with GitHub isn’t set up here.');
+			const res = await get(`${oauthUrl}/login/oauth/access_token`, {
+				method: 'POST',
+				headers: { accept: 'application/json', 'content-type': 'application/json' },
+				body: JSON.stringify({
+					client_id: github.clientId,
+					client_secret: github.clientSecret,
+					grant_type: 'refresh_token',
+					refresh_token: refreshToken
+				}),
+				signal: AbortSignal.timeout(15_000)
+			});
+			const tok = res.ok ? await res.json().catch(() => ({})) : {};
+			if (typeof tok.access_token !== 'string' || !tok.access_token)
+				throw new Error('GitHub didn’t renew your sign-in.');
+			return tokenOf(tok);
 		}
 	};
+
+	/** @typedef {{ access: string; refresh: string | null; expiresAt: number | null; refreshExpiresAt: number | null }} GitHubToken */
+	function tokenOf(tok) {
+		const at = (s) => (Number.isFinite(s) && s > 0 ? now() + s * 1000 : null);
+		return {
+			access: tok.access_token,
+			refresh:
+				typeof tok.refresh_token === 'string' && tok.refresh_token ? tok.refresh_token : null,
+			expiresAt: at(tok.expires_in),
+			refreshExpiresAt: at(tok.refresh_token_expires_in)
+		};
+	}
 }

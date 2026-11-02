@@ -13,6 +13,7 @@ import { checkPrices, readConfig } from './config.js';
 import { createDb, migrate, waitFor } from './db.js';
 import { createEngines, readSeeds } from './engines.js';
 import { createGitHubReader } from './github.js';
+import { createPoster } from './post.js';
 import { pgCache } from './reviewer.js';
 import { createSealer } from './seal.js';
 import { createSpend } from './spend.js';
@@ -39,12 +40,20 @@ const users = createUsers({ db, sealer: createSealer(config.sealKey) });
 const spend = createSpend({ db, caps: config.caps });
 const github = createGitHubReader({ token: config.github.token, log });
 const seeds = readSeeds(config.seedDir);
+const poster = createPoster({
+	users,
+	auth,
+	api: config.github.apiUrl || undefined,
+	appSlug: config.github.appSlug,
+	log
+});
 const engines = createEngines({
 	db,
 	users,
 	spend,
 	cache: pgCache(db),
 	github,
+	poster,
 	ai,
 	seeds,
 	version,

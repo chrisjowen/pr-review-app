@@ -10,6 +10,7 @@ import { after, before, describe, it } from 'node:test';
 import { createApp } from '../src/app.js';
 import { createAuth } from '../src/auth.js';
 import { createEngines } from '../src/engines.js';
+import { createPoster } from '../src/post.js';
 import { pgCache } from '../src/reviewer.js';
 import { createSealer } from '../src/seal.js';
 import { createSpend } from '../src/spend.js';
@@ -70,9 +71,19 @@ function answer(body) {
 	return JSON.stringify({ findings: [], notes: [], files: [], summary: 'ok' });
 }
 
+/** Reviews posted to the fake GitHub. */
+const posted = [];
+
 function fakeOAuth() {
 	return async (url, init = {}) => {
 		const u = String(url);
+		if (u === 'https://api.github.example/repos/o/r/pulls/7/reviews') {
+			posted.push({ authorization: init.headers.authorization, body: JSON.parse(init.body) });
+			return Response.json(
+				{ id: 1, html_url: 'https://github.com/o/r/pull/7#pullrequestreview-1' },
+				{ status: 201 }
+			);
+		}
 		if (u === 'https://github.example/login/oauth/access_token') {
 			const { code } = JSON.parse(init.body);
 			return Response.json({ access_token: `tok-${code}` });
@@ -108,6 +119,12 @@ describe('the site', dbOptions(), () => {
 			fetch: fakeOAuth()
 		});
 		const users = createUsers({ db, sealer: createSealer(randomBytes(32)) });
+		const poster = createPoster({
+			users,
+			auth,
+			api: 'https://api.github.example',
+			fetch: fakeOAuth()
+		});
 		const caps = { userUsd: 0.05, globalUsd: 10 };
 		const spend = createSpend({ db, caps });
 		engines = createEngines({
@@ -116,6 +133,7 @@ describe('the site', dbOptions(), () => {
 			spend,
 			cache: pgCache(db),
 			github: fakeReader,
+			poster,
 			ai: {
 				baseUrl: 'https://openrouter.example/api/v1',
 				apiKey: 'server-key',
@@ -298,13 +316,43 @@ describe('the site', dbOptions(), () => {
 		});
 		assert.equal(rerun.status, 409);
 		assert.equal(provider.calls.length, calls);
-		// Posting to GitHub isn't part of this site.
+		// Posting to GitHub goes up as the signed-in user, only once they confirm, and costs no AI.
+		const { rows: tokens } = await db.query(
+			'SELECT sealed FROM user_github_tokens WHERE user_id = $1',
+			[user]
+		);
+		assert.equal(tokens.length, 1);
+		assert.ok(!tokens[0].sealed.includes('tok-second'), 'the token is sealed');
+		const unconfirmed = await get(`/engine/api/reviews/${id}/post`, {
+			method: 'POST',
+			headers,
+			body: JSON.stringify({ event: 'COMMENT' })
+		});
+		assert.equal(unconfirmed.status, 400);
+		assert.equal(posted.length, 0);
 		const post = await get(`/engine/api/reviews/${id}/post`, {
 			method: 'POST',
 			headers,
-			body: JSON.stringify({ confirm: true, event: 'COMMENT' })
+			body: JSON.stringify({ confirm: true, event: 'COMMENT', body: 'Thanks!' })
 		});
-		assert.equal(post.status, 403);
+		assert.equal(post.status, 200);
+		assert.equal(
+			(await post.json()).posted.url,
+			'https://github.com/o/r/pull/7#pullrequestreview-1'
+		);
+		assert.equal(posted.length, 1);
+		assert.equal(posted[0].authorization, 'Bearer tok-second');
+		assert.equal(posted[0].body.event, 'COMMENT');
+		assert.equal(posted[0].body.body, 'Thanks!');
+		assert.equal(posted[0].body.commit_id, PR.headSha);
+		assert.equal(provider.calls.length, calls);
+		// Signing out drops the token; posting then asks you to sign in again.
+		const out = await get('/auth/signout', { method: 'POST', headers: { origin: ORIGIN, cookie } });
+		assert.equal(out.status, 303);
+		assert.equal(
+			(await db.query('SELECT 1 FROM user_github_tokens WHERE user_id = $1', [user])).rowCount,
+			0
+		);
 	});
 
 	it('keeps a user’s own key sealed, and reviews with it unmetered', async () => {

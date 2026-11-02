@@ -214,7 +214,7 @@ export function createGitHubReader({
 			return { pr, diff };
 		},
 
-		/** Posting needs write access we don't ask for: v1 copies the review as Markdown instead. */
+		/** The site itself never posts: a review goes up as its user, through post.js. */
 		async post() {
 			throw new GitHubError(
 				'This site doesn’t post to GitHub. Copy the review as Markdown and paste it into the pull request.',
