@@ -206,6 +206,12 @@ export function createEngines({
 			await ctx?.store.discard();
 		},
 
+		/** Writes out what a user's engine still holds, if it's running, so a page reads it back. */
+		async flush(userId) {
+			const ctx = await engines.get(userId)?.catch(() => null);
+			await ctx?.store.flush();
+		},
+
 		sweep,
 		size: () => engines.size,
 

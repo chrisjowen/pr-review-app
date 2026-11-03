@@ -19,6 +19,7 @@
  *   PRREVIEW_AI_MAX_TOKENS, PRREVIEW_AI_CHAT_MAX_TOKENS   the most one answer may be
  *   PRREVIEW_QUOTA_USER_USD (0.25), PRREVIEW_QUOTA_GLOBAL_USD (10)   hard daily caps, UTC days
  *   PRREVIEW_DEMO_PR, PRREVIEW_SEED_DIR   the demo PR and its pre-generated reviews
+ *   PRREVIEW_FRAME_ANCESTORS      origins that may frame the site, space-separated ('none' by default)
  */
 
 import path from 'node:path';
@@ -26,6 +27,21 @@ import { fileURLToPath } from 'node:url';
 import { readSealKey } from './seal.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/** The CSP's frame-ancestors: 'none' unless origins are listed (a local preview embedded in a tool). */
+export function frameAncestors(raw) {
+	const list = String(raw ?? '')
+		.trim()
+		.split(/\s+/)
+		.filter(Boolean);
+	if (!list.length) return "'none'";
+	for (const s of list)
+		if (!/^('none'|'self'|https?:\/\/(\*\.)?[\w.-]+(:\d+)?)$/.test(s))
+			throw new Error(
+				`PRREVIEW_FRAME_ANCESTORS must list origins like http://localhost:4310, not ${s}.`
+			);
+	return list.join(' ');
+}
 
 function number(env, name, fallback, { min = 0 } = {}) {
 	const raw = env[name];
@@ -80,6 +96,7 @@ export function readConfig(env = process.env) {
 			userUsd: number(env, 'PRREVIEW_QUOTA_USER_USD', 0.25),
 			globalUsd: number(env, 'PRREVIEW_QUOTA_GLOBAL_USD', 10)
 		},
+		frameAncestors: frameAncestors(env.PRREVIEW_FRAME_ANCESTORS),
 		demoPr: env.PRREVIEW_DEMO_PR || 'https://github.com/chrisjowen/docket/pull/48',
 		seedDir: env.PRREVIEW_SEED_DIR || path.join(ROOT, 'seed')
 	};

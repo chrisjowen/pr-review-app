@@ -420,43 +420,9 @@ h3 {
 	margin: 0;
 	color: color-mix(in srgb, var(--foreground) 78%, transparent);
 }
-.split {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
-	gap: 36px;
-	align-items: center;
-}
-@media (max-width: 860px) {
-	.split {
-		grid-template-columns: minmax(0, 1fr);
-	}
-}
-.stages {
-	padding-left: 20px;
-	margin: 0 0 16px;
-}
-.stages li {
-	margin-bottom: 8px;
-}
 .fine {
 	font-size: 14px;
 	color: var(--muted-foreground);
-}
-.shot {
-	margin: 0;
-}
-.shot img {
-	width: 100%;
-	height: auto;
-	border-radius: 12px;
-	border: 1px solid var(--border);
-	box-shadow: var(--shadow);
-	display: block;
-}
-.shot figcaption {
-	font-size: 13px;
-	color: var(--muted-foreground);
-	margin-top: 8px;
 }
 .bookmarklet {
 	display: inline-block;
@@ -467,6 +433,71 @@ h3 {
 	text-decoration: none;
 	font-weight: 600;
 	cursor: grab;
+}
+
+/* The demo reel under the hero, and a feature at a time with its screenshot. */
+.reel {
+	margin: 0 0 56px;
+}
+.reel video,
+.feature img {
+	display: block;
+	width: 100%;
+	height: auto;
+	border-radius: 12px;
+	border: 1px solid var(--border);
+	box-shadow: var(--shadow);
+	background: var(--card);
+}
+.reel figcaption {
+	font-size: 13px;
+	color: var(--muted-foreground);
+	margin-top: 10px;
+}
+.features {
+	display: grid;
+	gap: 56px;
+	margin-top: 32px;
+}
+.feature {
+	display: grid;
+	grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr);
+	gap: 32px;
+	align-items: center;
+	margin: 0;
+}
+.feature:nth-child(even) > div {
+	order: 2;
+}
+.feature h3 {
+	font-size: 24px;
+	margin: 6px 0 8px;
+}
+.feature p {
+	margin: 0 0 10px;
+	color: color-mix(in srgb, var(--foreground) 82%, transparent);
+}
+.feature .step {
+	font: 600 12px/1 var(--font-sans);
+	color: var(--brass);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+@media (max-width: 860px) {
+	.feature {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 16px;
+	}
+	.feature:nth-child(even) > div {
+		order: 0;
+	}
+}
+.mine {
+	margin: 0 0 48px;
+}
+.mine h2 {
+	font-size: 26px;
+	margin: 0 0 12px;
 }
 
 /* ---------- PR page ---------- */
@@ -749,19 +780,146 @@ table.diff tr.hunk td {
 	padding-left: 18px;
 	font-size: 13px;
 }
-.review-cta {
-	border-color: color-mix(in srgb, var(--brass) 45%, var(--border));
+/* The guided review's call to action, at the top of the PR page. */
+.guide {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 18px 36px;
+	align-items: center;
+	margin: 0 0 24px;
+	padding: 24px 28px;
+	border-radius: 14px;
+	border: 1px solid color-mix(in srgb, var(--brass) 50%, var(--border));
 	background: linear-gradient(
-		180deg,
-		color-mix(in srgb, var(--brass) 7%, var(--card)),
-		var(--card)
+		120deg,
+		color-mix(in srgb, var(--brass) 13%, var(--card)),
+		var(--card) 70%
 	);
+	box-shadow: var(--shadow);
 }
-.review-cta h2 {
-	font-size: 22px;
-}
-.review-cta p {
+.guide h2 {
+	font-size: clamp(24px, 3vw, 32px);
 	margin: 0 0 8px;
+}
+.guide-text > p {
+	margin: 0 0 8px;
+	max-width: 720px;
+}
+.guide-go {
+	display: grid;
+	gap: 10px;
+	justify-items: center;
+	max-width: 300px;
+}
+.guide .need {
+	margin: 0;
+	text-align: center;
+	color: var(--muted-foreground);
+}
+.btn.big {
+	padding: 16px 28px;
+	font-size: 17px;
+	border-radius: 10px;
+	box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--primary) 70%, transparent);
+	white-space: nowrap;
+}
+@media (max-width: 760px) {
+	.guide {
+		grid-template-columns: minmax(0, 1fr);
+		padding: 20px;
+	}
+	.guide-go {
+		max-width: none;
+		justify-items: stretch;
+	}
+	.btn.big {
+		white-space: normal;
+	}
+}
+.yours {
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px dashed color-mix(in srgb, var(--brass) 40%, var(--border));
+}
+
+/* Reviews already done: a user's own, and the ones posted from here. */
+.rv-state {
+	margin: 0 0 6px;
+	font-size: 14px;
+	color: color-mix(in srgb, var(--foreground) 80%, transparent);
+}
+.vcounts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+.vcount {
+	font-size: 12px;
+	padding: 3px 9px;
+	border-radius: 999px;
+	border: 1px solid currentColor;
+	white-space: nowrap;
+}
+.vcount.serious {
+	color: var(--danger);
+}
+.vcount.work {
+	color: var(--warning);
+}
+.vcount.like {
+	color: var(--success);
+}
+.vcount.note {
+	color: var(--sea);
+}
+.posted {
+	font-weight: 600;
+}
+.posted.APPROVE {
+	color: var(--success);
+}
+.posted.REQUEST_CHANGES {
+	color: var(--danger);
+}
+ul.reviews {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	display: grid;
+	gap: 0;
+}
+ul.reviews li {
+	padding: 12px 0;
+	border-top: 1px solid var(--hair);
+	min-width: 0;
+}
+ul.reviews li:first-child {
+	border-top: 0;
+	padding-top: 4px;
+}
+.rv-title {
+	font-weight: 600;
+	color: var(--foreground);
+	text-decoration: none;
+	overflow-wrap: anywhere;
+}
+.rv-title:hover {
+	text-decoration: underline;
+}
+.rv-ref {
+	display: block;
+	font: 12px var(--mono);
+	color: var(--muted-foreground);
+	margin: 2px 0 4px;
+	overflow-wrap: anywhere;
+}
+ul.postedlist {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	display: grid;
+	gap: 8px;
+	font-size: 14px;
 }
 .checksum {
 	margin: 0 0 8px;

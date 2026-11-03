@@ -18,6 +18,78 @@ export const esc = (v) =>
 const money = (n) => `$${Number(n).toFixed(2)}`;
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+/** How long ago a moment (ms since the epoch) was, in words, with the moment itself on hover. */
+export function ago(at, now = Date.now()) {
+	if (!Number.isFinite(at)) return '';
+	const s = Math.max(0, Math.round((now - at) / 1000));
+	const words =
+		s < 60
+			? 'just now'
+			: s < 3600
+				? `${plural(Math.floor(s / 60), 'minute')} ago`
+				: s < 86_400
+					? `${plural(Math.floor(s / 3600), 'hour')} ago`
+					: s < 30 * 86_400
+						? `${plural(Math.floor(s / 86_400), 'day')} ago`
+						: new Date(at).toISOString().slice(0, 10);
+	const when = new Date(at).toISOString().replace('T', ' ').slice(0, 16);
+	return `<time datetime="${new Date(at).toISOString()}" title="${when} UTC">${words}</time>`;
+}
+
+/** A review as GitHub shows it once posted. */
+const POSTED_AS = {
+	APPROVE: 'Approved',
+	REQUEST_CHANGES: 'Changes requested',
+	COMMENT: 'Commented'
+};
+const shortSha = (sha) => esc(String(sha ?? '').slice(0, 7));
+const reviewPath = (s) => `/${esc(s.owner)}/${esc(s.repo)}/pull/${Number(s.number)}/review`;
+
+/** A posted review: its verdict, when, and a link to it on GitHub. */
+function postedBadge(p) {
+	const label = POSTED_AS[p.event] ?? 'Posted';
+	const link = /^https:\/\//.test(p.url ?? '')
+		? ` <a href="${esc(p.url)}" rel="noopener">on GitHub ↗</a>`
+		: '';
+	return `<span class="posted ${esc(p.event)}">${label}</span> ${ago(p.at)}${link}`;
+}
+
+/** How a summed-up review's cards are filed, the way the chat files them. */
+function verdictChips(parts) {
+	const order = [
+		['serious', 'serious'],
+		['work', 'need work'],
+		['like', 'good'],
+		['note', 'worth knowing']
+	];
+	const chips = order
+		.filter(([k]) => parts[k])
+		.map(([k, words]) => `<span class="vcount ${k}"><b>${parts[k]}</b> ${words}</span>`);
+	return chips.length ? `<span class="vcounts">${chips.join('')}</span>` : '';
+}
+
+/** Where a review stands: how much is decided, and whether it went up to GitHub. */
+function reviewState(s) {
+	const progress = s.cards
+		? `${s.decided} of ${plural(s.cards, 'change')} decided`
+		: 'Not read yet';
+	return `${progress} · updated ${ago(s.updatedAt)}${s.posted ? ` · ${postedBadge(s.posted)}` : ''}`;
+}
+
+/** A user's reviews, each linking back to it. */
+export function reviewList(list) {
+	return `<ul class="reviews">${list
+		.map(
+			(s) => `<li>
+  <a class="rv-title" href="${reviewPath(s)}">${esc(s.title || `${s.owner}/${s.repo}#${s.number}`)}</a>
+  <span class="rv-ref">${esc(s.owner)}/${esc(s.repo)}#${Number(s.number)}</span>
+  <p class="rv-state">${reviewState(s)}</p>
+  ${verdictChips(s.parts)}
+</li>`
+		)
+		.join('')}</ul>`;
+}
+
 /** Busts browser caches of the stylesheet on each deploy. */
 const BOOT = Date.now().toString(36);
 const FONTS =
@@ -59,11 +131,56 @@ ${bare ? '' : `<footer class="foot"><p>PR review for humans reads public pull re
 
 // ---------- marketing ----------
 
-/** @param {{ user: any; origin: string; demo: string; caps: { userUsd: number }; aiOn: boolean }} o */
-export function marketingPage({ user, origin, demo, caps, aiOn }) {
+/** The guided review, a step at a time, each with a screenshot of it on the demo PR. */
+const FEATURES = [
+	{
+		img: 'home-overview',
+		alt: 'The reviewer’s overview of a pull request: what it does, what needs your attention and what was asked',
+		step: 'It reads the whole PR first',
+		title: 'An overview before any code',
+		text: 'What the PR does, what needs your attention, and what was asked, item by item, with whether it’s met. New to the repo, or a big PR? Ask for the project as a whole, or the story behind the PR.'
+	},
+	{
+		img: 'home-change',
+		alt: 'One change in the chat: a Performance risk verdict filed as Serious, with the code it is about',
+		step: 'Then one change at a time',
+		title: 'A plain verdict on every change',
+		text: 'Looks good, Code smell, Possible security issue, Not well tested… filed as What I like, Worth knowing, Needs work or Serious, with a suggestion when there’s a problem. Accept, Disagree or Comment, and the next change comes up. Type to ask about the one in front of you.'
+	},
+	{
+		img: 'home-file',
+		alt: 'The whole file open in a drawer beside the chat, at the lines the change is about',
+		step: 'The code, in place',
+		title: 'The key lines lit, the whole file a click away',
+		text: 'Each change shows its code with the lines that matter highlighted. Open the full file at the right line, with its changes a tab away and every card on that file listed.'
+	},
+	{
+		img: 'home-files',
+		alt: 'The quick switcher open over the review, filtering the changed files and changes by name',
+		step: 'Jump anywhere',
+		title: 'The navigator, and ⌘E for any file',
+		text: 'Beside the chat, never instead of it, the navigator lists the passage’s groups, stops and every changed file. ⌘E (Ctrl+E) opens a quick switcher; jumping anywhere takes the conversation there.'
+	},
+	{
+		img: 'home-finish',
+		alt: 'The finished review: the verdicts, your decisions, a recommended Request changes and the draft to post',
+		step: 'Finish, and post it as you',
+		title: 'Your verdict, drafted from your decisions',
+		text: 'Finish drafts Approve, Request changes or Comment, with the changes you accepted or commented on as inline comments. You see the draft, then post it to the pull request as you, or copy it as Markdown. Your reviews are kept, so you can come back to one.'
+	}
+];
+
+/** @param {{ user: any; origin: string; demo: string; caps: { userUsd: number }; aiOn: boolean; reviews?: any[] }} o */
+export function marketingPage({ user, origin, demo, caps, aiOn, reviews = [] }) {
 	const host = origin.replace(/^https?:\/\//, '');
 	const example = 'chrisjowen/pr-review-wheelhouse/pull/3';
 	const demoPath = new URL(demo).pathname;
+	const mine = user
+		? `<section class="mine card" aria-labelledby="mine-h">
+  <h2 id="mine-h">Your reviews</h2>
+  ${reviews.length ? `${reviewList(reviews)}<p class="small"><a href="/account#reviews">All your reviews</a></p>` : '<p class="dim">None yet. Open a pull request here and start the guided review; it’s kept, so you can come back to it.</p>'}
+</section>`
+		: '';
 	const body = `
 <section class="hero">
   <p class="eyebrow">Code review, rebalanced</p>
@@ -87,6 +204,13 @@ export function marketingPage({ user, origin, demo, caps, aiOn }) {
   <p class="cta-row"><a class="btn ghost" href="${esc(demoPath)}">Open the live demo →</a> <span class="dim">a real 17-file, +1,079 −205 agent PR, with a pre-generated guided review</span></p>
 </section>
 
+${mine}
+
+<figure class="reel">
+  <video src="/static/home-demo.mp4" poster="/static/home-overview.png" autoplay muted loop playsinline preload="metadata" width="1280" height="800" aria-label="A guided review in progress on the demo pull request"></video>
+  <figcaption>A guided review of the demo PR: the overview, a change at a time, the whole file, ⌘E, then finish and post.</figcaption>
+</figure>
+
 <section class="band">
   <h2>Free, instant, no AI: a reading plan</h2>
   <p class="sub">Every public PR, no sign-in. Rules about paths and sizes sort the files before you read a line.</p>
@@ -97,19 +221,17 @@ export function marketingPage({ user, origin, demo, caps, aiOn }) {
   </div>
 </section>
 
-<section class="band split">
-  <div>
-    <h2>Then a second pair of eyes, if you want one</h2>
-    <p class="sub">Sign in with GitHub to start a guided review: one card per change, each with a plain verdict, and a review mate beside every card to talk it through.</p>
-    <ol class="stages">
-      <li><b>Walkthrough.</b> What the PR does and why, the evidence it claims, where the files went.</li>
-      <li><b>Key changes.</b> The changes that matter, one card each: a verdict (looks good, exemplary, code smell, possible security issue, not well tested…), why, a suggestion for problems, and the code with the key lines lit.</li>
-      <li><b>Quality pass.</b> Every concern in one checklist, so nothing slips through.</li>
-      <li><b>Skim pile.</b> The small stuff, a card each; generated files stay hidden.</li>
-    </ol>
-    <p class="fine">You decide: accept, disagree or comment on each card, and say when a disagreement is worth remembering. <b>Finish review</b> drafts your verdict; post it to the pull request as you, after you’ve seen it, or copy it as Markdown.</p>
+<section class="band">
+  <h2>Then a second pair of eyes: a review you talk through</h2>
+  <p class="sub">Sign in with GitHub and press <b>Review it with a second pair of eyes</b> on any PR page. The guided review happens in a chat, on the same engine as the <a href="https://github.com/chrisjowen/pr-review-wheelhouse">pr-review-wheelhouse</a> plugin.</p>
+  <div class="features">
+    ${FEATURES.map(
+			(f) => `<figure class="feature">
+      <div><p class="step">${esc(f.step)}</p><h3>${esc(f.title)}</h3><p>${esc(f.text)}</p></div>
+      <img src="/static/${f.img}.png" alt="${esc(f.alt)}" width="1920" height="1200" loading="lazy">
+    </figure>`
+		).join('\n    ')}
   </div>
-  <figure class="shot"><img src="/static/stop-web.png" alt="A stop in the guided review: a reviewer note pinned above the lines it discusses" loading="lazy"><figcaption>A stop: notes pinned above the lines they discuss.</figcaption></figure>
 </section>
 
 <section class="band">
@@ -190,8 +312,22 @@ function checksPanel(pr, checksKnown) {
 		.join('')}</ul>`;
 }
 
-/** @param {{ user: any; origin: string; pr: any; files: any[]; checksKnown: boolean; demo: boolean; signin: boolean; limit: any }} o */
-export function prPage({ user, origin, pr, files, checksKnown, demo, signin, limit }) {
+/**
+ * @param {{ user: any; origin: string; pr: any; files: any[]; checksKnown: boolean; demo: boolean; signin: boolean; limit: any; mine?: any; posted?: any[] }} o
+ * `mine` is the signed-in user's own review of this PR, summed up; `posted` the reviews of it posted from this site.
+ */
+export function prPage({
+	user,
+	origin,
+	pr,
+	files,
+	checksKnown,
+	demo,
+	signin,
+	limit,
+	mine = null,
+	posted = []
+}) {
 	const plan = readingPlan(files);
 	const budget = { left: MAX_PAGE_LINES };
 	const ghUrl = pr.url;
@@ -221,12 +357,46 @@ export function prPage({ user, origin, pr, files, checksKnown, demo, signin, lim
 		: '<p class="dim small">No generated files.</p>';
 
 	const reviewNote = demo
-		? 'A guided review of this PR is pre-generated, so you can try every stage.'
-		: 'A walkthrough, then one card per change with a plain verdict, the key changes first, every concern in a checklist, and a review mate beside each card.';
+		? 'A guided review of this PR is pre-generated, so you can try every stage for free.'
+		: 'A reviewer reads the whole PR first, then walks you through it a change at a time in a chat: a plain verdict on each, the code with its key lines lit, and every concern in one checklist. You decide each one, then post your review to GitHub as you.';
+	const current = mine && mine.headSha === pr.headSha ? mine : null;
+	const earlier = mine && !current ? mine : null;
+	const ctaLabel = !user
+		? 'Sign in to review →'
+		: current
+			? current.posted
+				? 'Open your review →'
+				: 'Resume your review →'
+			: 'Start the guided review →';
 	const ctaButton =
 		user || signin
-			? `<a class="btn primary block" href="${esc(cta)}">${user ? 'Start the guided review →' : 'Sign in to review →'}</a>`
-			: '<p class="dim small">Sign-in isn’t open on this site yet, so the guided review isn’t available. The reading plan is.</p>';
+			? `<a class="btn primary big" href="${esc(cta)}">${ctaLabel}</a>`
+			: '<p class="dim small">Sign-in isn’t open on this site yet, so the guided review isn’t available. The reading plan below is.</p>';
+	const yours = current
+		? `<div class="yours"><p class="rv-state"><b>Your review:</b> ${reviewState(current)}</p>${verdictChips(current.parts)}</div>`
+		: earlier
+			? `<div class="yours"><p class="rv-state"><b>Your review</b> is of an earlier commit (<code>${shortSha(earlier.headSha)}</code>), updated ${ago(earlier.updatedAt)}${earlier.posted ? ` · ${postedBadge(earlier.posted)}` : ''}. Opening it starts afresh at the new head.</p></div>`
+			: '';
+	const guide = `<section class="guide" aria-labelledby="guide-h">
+  <div class="guide-text">
+    <p class="eyebrow">Guided review</p>
+    <h2 id="guide-h">Review it with a second pair of eyes</h2>
+    <p>${reviewNote}</p>
+    ${yours}
+  </div>
+  <div class="guide-go">
+    ${ctaButton}
+    ${user || !signin ? '' : '<p class="small need">Reviewing needs you to sign in: each person gets a free daily AI allowance, or brings their own key. Reading this page needs no account.</p>'}
+  </div>
+</section>`;
+	const postedList = posted.length
+		? `<ul class="postedlist">${posted
+				.map(
+					(p) =>
+						`<li><b>${esc(p.login)}</b> ${postedBadge(p)}${p.headSha && p.headSha !== pr.headSha ? ` <span class="dim">at <code>${shortSha(p.headSha)}</code></span>` : ''}</li>`
+				)
+				.join('')}</ul>`
+		: '<p class="dim small">None yet. A guided review posted to GitHub from this site shows up here.</p>';
 
 	const body = `
 <section class="prhead">
@@ -234,6 +404,8 @@ export function prPage({ user, origin, pr, files, checksKnown, demo, signin, lim
   <h1>${esc(pr.title)}</h1>
   <p class="meta"><b>${esc(pr.author)}</b> wants to merge <code>${esc(pr.headRef)}</code> into <code>${esc(pr.baseRef)}</code> · <span class="add">+${pr.additions}</span> <span class="del">−${pr.deletions}</span> · ${plural(pr.changedFiles, 'file')} · <a href="${esc(ghUrl)}" rel="noopener">view on GitHub</a></p>
 </section>
+
+${guide}
 
 <div class="prgrid">
   <div class="primary">
@@ -257,12 +429,9 @@ export function prPage({ user, origin, pr, files, checksKnown, demo, signin, lim
     </section>
   </div>
   <aside class="side">
-    <section class="panel review-cta">
-      <p class="eyebrow">Guided review</p>
-      <h2>Review it with a second pair of eyes</h2>
-      <p>${reviewNote}</p>
-      ${ctaButton}
-      ${user || !signin ? '' : '<p class="dim small">Reading this page needs no account. Reviewing does, so the free AI allowance is per person.</p>'}
+    <section class="panel">
+      <h2>Reviews posted from here</h2>
+      ${postedList}
     </section>
     <section class="panel">
       <h2>Checks</h2>
@@ -320,9 +489,9 @@ export function signinPage({ user, origin, next, github, demo, error }) {
 }
 
 /**
- * @param {{ user: any; origin: string; status: { reviewer: string; own: any; aiOn: boolean; spent: number; globalSpent: number; caps: { userUsd: number; globalUsd: number } }; providers: any; error?: string; saved?: string | null }} o
+ * @param {{ user: any; origin: string; status: { reviewer: string; own: any; aiOn: boolean; spent: number; globalSpent: number; caps: { userUsd: number; globalUsd: number } }; providers: any; reviews?: any[]; error?: string; saved?: string | null }} o
  */
-export function accountPage({ user, origin, status: s, providers, error, saved }) {
+export function accountPage({ user, origin, status: s, providers, reviews = [], error, saved }) {
 	const pct = Math.min(100, Math.round((s.spent / s.caps.userUsd) * 100));
 	const reviewer = s.own
 		? `<p><b>${esc(s.reviewer)}</b></p><p>Your own ${esc(s.own.label)} key is in use, so there is no allowance: you pay your provider directly.</p>`
@@ -340,6 +509,10 @@ export function accountPage({ user, origin, status: s, providers, error, saved }
   <p class="eyebrow">Account</p>
   <h1>${esc(user.name)} <span class="dim">@${esc(user.login)}</span>${user.kind === 'demo' ? ' <span class="tag">demo</span>' : ''}</h1>
   ${error ? `<p class="error">${esc(error)}</p>` : ''}${saved ? `<p class="ok">${esc(saved)}</p>` : ''}
+  <div class="card" id="reviews">
+    <h2>Your reviews</h2>
+    ${reviews.length ? reviewList(reviews) : '<p class="dim">None yet. Swap <code>github.com</code> for this site in a pull request’s URL, then start the guided review; it’s kept here, so you can come back to it.</p>'}
+  </div>
   <div class="card">
     <h2>Your reviewer</h2>
     ${reviewer}
