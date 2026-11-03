@@ -13,8 +13,9 @@ import { partKind, verdictTable } from '../static/chat-core.js';
 
 const vt = verdictTable(CARD_VERDICTS);
 
-/** What a summary reads: the review without its diff, chat threads and requests. */
-const SLIM = `review - 'files' - 'chat' - 'requests'`;
+/** What a summary reads: the review without its diff, chat threads and requests, and whether it has chat. */
+const SLIM = `review - 'files' - 'chat' - 'requests' AS review,
+	coalesce(review->'chat', '{}'::jsonb) <> '{}'::jsonb AS chatted`;
 
 /** One kept review, summed up. */
 export function summarize(review) {
@@ -41,32 +42,35 @@ export function summarize(review) {
 
 /** @param {{ db: any; seeds?: any[] }} o */
 export function createHistory({ db, seeds = [] }) {
-	const seedRev = new Map(seeds.map((r) => [r.id, r.rev]));
-	// A demo review the user has never opened is the site's, not theirs.
-	const theirs = (review) => seedRev.get(review.id) !== review.rev;
+	const seeded = new Set(seeds.map((r) => r.id));
+	// A demo review is the site's until the user works on it: decides a change, asks about one, or posts it.
+	// (Its copy may come from an older seed file, so nothing about the copy itself says it's untouched.)
+	const theirs = ({ review, chatted }) =>
+		!seeded.has(review.id) ||
+		chatted ||
+		!!review.posted ||
+		Object.keys(review.cardDecisions ?? {}).length > 0;
 
 	return {
 		/** A user's reviews, the latest first. */
 		async mine(userId, { limit = 50 } = {}) {
 			const { rows } = await db.query(
-				`SELECT ${SLIM} AS review FROM reviews WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2`,
-				[userId, limit + seedRev.size]
+				`SELECT ${SLIM} FROM reviews WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2`,
+				[userId, limit + seeded.size]
 			);
 			return rows
-				.map((r) => r.review)
 				.filter(theirs)
 				.slice(0, limit)
-				.map(summarize);
+				.map((r) => summarize(r.review));
 		},
 
 		/** A user's review of one pull request (by the engine's id), or null. */
 		async mineOf(userId, id) {
 			const { rows } = await db.query(
-				`SELECT ${SLIM} AS review FROM reviews WHERE user_id = $1 AND id = $2`,
+				`SELECT ${SLIM} FROM reviews WHERE user_id = $1 AND id = $2`,
 				[userId, id]
 			);
-			const review = rows[0]?.review;
-			return review && theirs(review) ? summarize(review) : null;
+			return rows[0] && theirs(rows[0]) ? summarize(rows[0].review) : null;
 		},
 
 		/** The reviews of one pull request posted to GitHub from this site, the latest first. */
@@ -75,7 +79,7 @@ export function createHistory({ db, seeds = [] }) {
 				`SELECT u.login, r.review->'posted' AS posted, r.review->'pr'->>'headSha' AS head
 				 FROM reviews r JOIN users u ON u.id = r.user_id
 				 WHERE r.id = $1 AND jsonb_typeof(r.review->'posted') = 'object'
-				 ORDER BY (r.review->'posted'->>'at')::bigint DESC NULLS LAST
+				 ORDER BY r.updated_at DESC
 				 LIMIT $2`,
 				[id, limit]
 			);

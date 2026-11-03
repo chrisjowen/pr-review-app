@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
+import { createServer } from 'node:http';
+import { createApp } from '../src/app.js';
 import { createHistory, summarize } from '../src/history.js';
 import { ago, reviewList } from '../src/pages.js';
-import { addUser, dbOptions, freshDb } from './helpers.js';
+import { addUser, dbOptions, DIFF, freshDb } from './helpers.js';
 
 /** A kept review, as the engine writes it: two stages' cards, and the reviewer's decisions on some. */
 function review(over = {}) {
@@ -103,12 +105,13 @@ describe('the reviews already done, over Postgres', dbOptions(), () => {
 			JSON.stringify(r)
 		]);
 
-	it('lists a user’s own reviews, the latest first, leaving out demo reviews never opened', async () => {
-		const seed = review({ id: 'chrisjowen__docket__48', rev: 3065 });
-		const history = createHistory({ db: t.db, seeds: [seed] });
+	it('lists a user’s own reviews, the latest first, leaving out demo reviews they haven’t worked on', async () => {
+		const seed = review({ id: 'chrisjowen__docket__48', rev: 3065, chat: {}, cardDecisions: {} });
+		// The seed file is regenerated after this user's copy was made: their copy is still untouched.
+		const history = createHistory({ db: t.db, seeds: [{ ...seed, rev: 3100 }] });
 		const me = await addUser(t.db);
 		const other = await addUser(t.db);
-		await keep(me, seed);
+		await keep(me, { ...seed, rev: 3066 });
 		await keep(me, review());
 		await t.db.query(
 			"UPDATE reviews SET updated_at = now() - interval '1 hour' WHERE id = 'o__r__7'"
@@ -122,14 +125,30 @@ describe('the reviews already done, over Postgres', dbOptions(), () => {
 		);
 		assert.equal((await history.mine(me, { limit: 1 })).length, 1);
 		assert.equal(await history.mineOf(me, 'chrisjowen__docket__48'), null);
-		// Opened, the demo review is theirs.
+		// Once they decide a change in it, the demo review is theirs.
 		await t.db.query(
-			"UPDATE reviews SET review = jsonb_set(review, '{rev}', '3066') WHERE user_id = $1 AND id = 'chrisjowen__docket__48'",
+			`UPDATE reviews SET review = jsonb_set(review, '{cardDecisions}', '{"stop-1:c1":{"decision":"accept"}}')
+			 WHERE user_id = $1 AND id = 'chrisjowen__docket__48'`,
 			[me]
 		);
 		assert.equal((await history.mine(me)).length, 3);
+		assert.equal((await history.mineOf(me, 'chrisjowen__docket__48')).decided, 1);
 		assert.equal((await history.mineOf(me, 'o__r__7')).decided, 2);
 		assert.equal(await history.mineOf(other, 'o__r__7'), null);
+	});
+
+	it('counts a demo review as theirs once they ask about it, or post it', async () => {
+		const seed = review({ id: 'demo__d__1', chat: {}, cardDecisions: {} });
+		const history = createHistory({ db: t.db, seeds: [seed] });
+		const asked = await addUser(t.db);
+		const posted = await addUser(t.db);
+		await keep(asked, { ...seed, chat: { 'stop-1:c1': [{ who: 'me', text: 'Why?' }] } });
+		await keep(posted, {
+			...seed,
+			posted: { at: 1, event: 'COMMENT', url: 'https://github.com/d/d/pull/1#r' }
+		});
+		assert.ok(await history.mineOf(asked, 'demo__d__1'));
+		assert.ok(await history.mineOf(posted, 'demo__d__1'));
 	});
 
 	it('lists the reviews of one PR posted from here, whoever posted them, and nothing unposted', async () => {
@@ -164,6 +183,16 @@ describe('the reviews already done, over Postgres', dbOptions(), () => {
 			})
 		);
 		await keep(c, review({ id }));
+		await t.db.query(
+			"UPDATE reviews SET updated_at = now() - interval '1 hour' WHERE user_id = $1",
+			[a]
+		);
+		// A posted moment that isn't a number can't break the page.
+		await keep(
+			await addUser(t.db, 'dave'),
+			review({ id: 'o__r__72', posted: { at: 'soon', event: 'COMMENT', url: '' } })
+		);
+		assert.equal((await history.posted('o__r__72')).length, 1);
 		const posted = await history.posted(id);
 		assert.deepEqual(
 			posted.map((p) => [p.login, p.event, p.headSha]),
@@ -173,5 +202,60 @@ describe('the reviews already done, over Postgres', dbOptions(), () => {
 			]
 		);
 		assert.deepEqual(await history.posted('o__r__71'), []);
+	});
+});
+
+describe('a page when the reviews can’t be read', () => {
+	it('still shows a PR’s reading plan, and home, without them', async () => {
+		const logged = [];
+		const pr = {
+			owner: 'o',
+			repo: 'r',
+			number: 7,
+			url: 'https://github.com/o/r/pull/7',
+			title: 'Tricks',
+			bodyHtml: '',
+			author: 'a',
+			state: 'open',
+			isDraft: false,
+			baseRef: 'main',
+			headRef: 'f',
+			headSha: 'abc',
+			additions: 1,
+			deletions: 1,
+			changedFiles: 1,
+			checks: []
+		};
+		const app = createApp({
+			origin: 'http://localhost:9',
+			demoPr: 'https://github.com/chrisjowen/docket/pull/48',
+			caps: { userUsd: 0.25, globalUsd: 10 },
+			aiOn: false,
+			db: { query: async () => Promise.reject(new Error('connection refused')) },
+			auth: { github: true, demo: false, user: () => null },
+			users: {},
+			spend: {},
+			engines: {},
+			github: { basics: async () => ({ pr, diff: DIFF, checksKnown: true }), limit: () => ({}) },
+			seeds: [],
+			log: (l) => logged.push(l)
+		});
+		const server = createServer((req, res) => void app.handle(req, res));
+		await new Promise((r) => server.listen(0, '127.0.0.1', r));
+		try {
+			const base = `http://127.0.0.1:${server.address().port}`;
+			const page = await fetch(`${base}/o/r/pull/7`);
+			assert.equal(page.status, 200);
+			const html = await page.text();
+			assert.match(html, /Reading plan/);
+			assert.match(html, /Review it with a second pair of eyes/);
+			assert.match(html, /None yet/);
+			assert.ok(
+				logged.some((l) => /reading the posted reviews failed: connection refused/.test(l))
+			);
+			assert.equal((await fetch(`${base}/`)).status, 200);
+		} finally {
+			server.close();
+		}
 	});
 });

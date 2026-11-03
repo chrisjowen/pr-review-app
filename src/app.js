@@ -91,6 +91,19 @@ export function createApp({
 	const signin = auth.github || auth.demo;
 	const history = createHistory({ db, seeds });
 
+	/**
+	 * The reviews already done, for a page; a page still renders without them
+	 * (the reading plan needs no database) if they can't be read just now.
+	 */
+	async function previous(what, read, empty) {
+		try {
+			return await read();
+		} catch (e) {
+			log(`reading ${what} failed: ${e?.message || e}`);
+			return empty;
+		}
+	}
+
 	function send(res, status, body, type = 'text/html; charset=utf-8', extra = {}) {
 		res.statusCode = status;
 		res.setHeader('content-type', type);
@@ -236,10 +249,18 @@ export function createApp({
 		try {
 			const { pr, diff, checksKnown } = await github.basics(owner, repo, number);
 			const id = `${pr.owner}__${pr.repo}__${pr.number}`;
-			if (user) await engines.flush(user.id);
 			const [mine, posted] = await Promise.all([
-				user ? history.mineOf(user.id, id) : null,
-				history.posted(id)
+				user
+					? previous(
+							'your review',
+							async () => {
+								await engines.flush(user.id);
+								return history.mineOf(user.id, id);
+							},
+							null
+						)
+					: null,
+				previous('the posted reviews', () => history.posted(id), [])
 			]);
 			return send(
 				res,
@@ -344,17 +365,22 @@ export function createApp({
 
 	async function accountRoute(req, res, user, url, p, method) {
 		if (!user) return redirect(res, '/signin?next=/account');
-		const page = async (extra) => {
-			await engines.flush(user.id);
-			return accountPage({
+		const page = async (extra) =>
+			accountPage({
 				user,
 				origin,
 				status: await aiStatus(user),
 				providers: PROVIDERS,
-				reviews: await history.mine(user.id),
+				reviews: await previous(
+					'your reviews',
+					async () => {
+						await engines.flush(user.id);
+						return history.mine(user.id);
+					},
+					[]
+				),
 				...extra
 			});
-		};
 		if (method === 'GET' && p === '/account')
 			return send(res, 200, await page({ saved: url.searchParams.get('saved') }));
 		if (method !== 'POST') return send(res, 404, 'Not found', 'text/plain; charset=utf-8');
@@ -405,8 +431,16 @@ export function createApp({
 		if (p.startsWith('/engine/')) return engineRoute(req, res, user, url);
 
 		if (method === 'GET' && p === '/') {
-			if (user) await engines.flush(user.id);
-			const reviews = user ? await history.mine(user.id, { limit: 5 }) : [];
+			const reviews = user
+				? await previous(
+						'your reviews',
+						async () => {
+							await engines.flush(user.id);
+							return history.mine(user.id, { limit: 5 });
+						},
+						[]
+					)
+				: [];
 			return send(res, 200, marketingPage({ user, origin, demo: demoPr, caps, aiOn, reviews }));
 		}
 		if (method === 'GET' && p === '/go') {
