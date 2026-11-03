@@ -71,6 +71,7 @@ const app = createApp({
 	engines,
 	github,
 	seeds,
+	frameAncestors: config.frameAncestors,
 	log
 });
 

@@ -9,7 +9,7 @@
  *   …/review/context                  the project as a whole: description, topics, the start of its README
  *   /engine/api/…                     the shared engine's API, for the signed-in user
  *   /signin, /auth/…                  sign in with GitHub (or the local demo login)
- *   /account                          the allowance, your own key, your data
+ *   /account                          your reviews, the allowance, your own key, your data
  *   /healthz, /readyz                 liveness, and readiness (Postgres answers)
  */
 
@@ -27,6 +27,7 @@ import {
 	reviewShell,
 	signinPage
 } from './pages.js';
+import { createHistory } from './history.js';
 import { filesOf } from './plan.js';
 import { PROVIDERS } from './reviewer.js';
 import { githubUrl, matchPrPath, parsePrInput, prPath } from './urls.js';
@@ -42,28 +43,31 @@ const TYPES = {
 	'.js': 'text/javascript; charset=utf-8',
 	'.css': 'text/css; charset=utf-8',
 	'.png': 'image/png',
-	'.svg': 'image/svg+xml'
+	'.svg': 'image/svg+xml',
+	'.mp4': 'video/mp4'
 };
-const CSP = [
-	"default-src 'self'",
-	"script-src 'self'",
-	"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-	"font-src 'self' https://fonts.gstatic.com",
-	"img-src 'self' https: data:",
-	"connect-src 'self'",
-	"frame-ancestors 'none'",
-	"base-uri 'none'",
-	"form-action 'self'",
-	"object-src 'none'"
-].join('; ');
+const csp = (frameAncestors) =>
+	[
+		"default-src 'self'",
+		"script-src 'self'",
+		"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+		"font-src 'self' https://fonts.gstatic.com",
+		"img-src 'self' https: data:",
+		"connect-src 'self'",
+		`frame-ancestors ${frameAncestors}`,
+		"base-uri 'none'",
+		"form-action 'self'",
+		"object-src 'none'"
+	].join('; ');
 const ROBOTS = 'User-agent: *\nDisallow: /engine/\nDisallow: /auth/\nDisallow: /account\n';
 
 /**
  * @param {{
  *   origin: string; demoPr: string; caps: { userUsd: number; globalUsd: number }; aiOn: boolean;
  *   db: any; auth: any; users: any; spend: any; engines: any; github: any; seeds: any[];
- *   log?: (line: string) => void;
+ *   frameAncestors?: string; log?: (line: string) => void;
  * }} deps
+ * `frameAncestors` is who may frame the site ('none' unless a local preview is embedded somewhere).
  */
 export function createApp({
 	origin,
@@ -77,12 +81,28 @@ export function createApp({
 	engines,
 	github,
 	seeds,
+	frameAncestors = "'none'",
 	log = () => {}
 }) {
+	const CSP = csp(frameAncestors);
 	const secure = origin.startsWith('https://');
 	const host = new URL(origin).host;
 	const seeded = new Set(seeds.map((r) => r.pr.url.toLowerCase()));
 	const signin = auth.github || auth.demo;
+	const history = createHistory({ db, seeds });
+
+	/**
+	 * The reviews already done, for a page; a page still renders without them
+	 * (the reading plan needs no database) if they can't be read just now.
+	 */
+	async function previous(what, read, empty) {
+		try {
+			return await read();
+		} catch (e) {
+			log(`reading ${what} failed: ${e?.message || e}`);
+			return empty;
+		}
+	}
 
 	function send(res, status, body, type = 'text/html; charset=utf-8', extra = {}) {
 		res.statusCode = status;
@@ -129,26 +149,44 @@ export function createApp({
 		});
 	}
 
-	function serveStatic(res, pathname) {
+	/** Serves a file under /static/ or /ui/, with byte ranges (Safari plays a video only through them). */
+	function serveStatic(req, res, pathname) {
 		for (const [prefix, dir] of Object.entries(STATIC)) {
 			if (!pathname.startsWith(prefix)) continue;
 			const rel = pathname.slice(prefix.length);
 			const type = TYPES[path.extname(rel)];
-			let ok;
+			let stat = null;
 			try {
-				ok = /^[\w-][\w.-]*$/.test(rel) && !!type && statSync(path.join(dir, rel)).isFile();
+				if (/^[\w-][\w.-]*$/.test(rel) && type) stat = statSync(path.join(dir, rel));
 			} catch {
-				ok = false;
+				stat = null;
 			}
-			if (!ok) {
+			if (!stat?.isFile()) {
 				send(res, 404, 'Not found', 'text/plain; charset=utf-8');
 				return true;
 			}
-			res.statusCode = 200;
+			const size = stat.size;
+			let start = 0;
+			let end = size - 1;
+			const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
+			if (range && (range[1] || range[2])) {
+				start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
+				end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+				if (start > end || start >= size) {
+					res.statusCode = 416;
+					res.setHeader('content-range', `bytes */${size}`);
+					res.end();
+					return true;
+				}
+				res.statusCode = 206;
+				res.setHeader('content-range', `bytes ${start}-${end}/${size}`);
+			} else res.statusCode = 200;
 			res.setHeader('content-type', type);
+			res.setHeader('content-length', String(end - start + 1));
+			res.setHeader('accept-ranges', 'bytes');
 			res.setHeader('cache-control', 'no-cache');
 			res.setHeader('x-content-type-options', 'nosniff');
-			createReadStream(path.join(dir, rel))
+			createReadStream(path.join(dir, rel), size ? { start, end } : {})
 				.on('error', () => {
 					if (!res.headersSent) res.statusCode = 404;
 					res.end();
@@ -210,6 +248,20 @@ export function createApp({
 		if (suffix) return redirect(res, here);
 		try {
 			const { pr, diff, checksKnown } = await github.basics(owner, repo, number);
+			const id = `${pr.owner}__${pr.repo}__${pr.number}`;
+			const [mine, posted] = await Promise.all([
+				user
+					? previous(
+							'your review',
+							async () => {
+								await engines.flush(user.id);
+								return history.mineOf(user.id, id);
+							},
+							null
+						)
+					: null,
+				previous('the posted reviews', () => history.posted(id), [])
+			]);
 			return send(
 				res,
 				200,
@@ -221,7 +273,9 @@ export function createApp({
 					checksKnown,
 					demo: seeded.has(String(pr.url).toLowerCase()),
 					signin,
-					limit: github.limit()
+					limit: github.limit(),
+					mine,
+					posted
 				}),
 				undefined,
 				{ 'cache-control': 'private, no-cache' }
@@ -312,7 +366,21 @@ export function createApp({
 	async function accountRoute(req, res, user, url, p, method) {
 		if (!user) return redirect(res, '/signin?next=/account');
 		const page = async (extra) =>
-			accountPage({ user, origin, status: await aiStatus(user), providers: PROVIDERS, ...extra });
+			accountPage({
+				user,
+				origin,
+				status: await aiStatus(user),
+				providers: PROVIDERS,
+				reviews: await previous(
+					'your reviews',
+					async () => {
+						await engines.flush(user.id);
+						return history.mine(user.id);
+					},
+					[]
+				),
+				...extra
+			});
 		if (method === 'GET' && p === '/account')
 			return send(res, 200, await page({ saved: url.searchParams.get('saved') }));
 		if (method !== 'POST') return send(res, 404, 'Not found', 'text/plain; charset=utf-8');
@@ -357,13 +425,24 @@ export function createApp({
 			}
 		}
 		if (p === '/robots.txt') return send(res, 200, ROBOTS, 'text/plain; charset=utf-8');
-		if (method === 'GET' && serveStatic(res, p)) return;
+		if (method === 'GET' && serveStatic(req, res, p)) return;
 
 		const user = await signedIn(req);
 		if (p.startsWith('/engine/')) return engineRoute(req, res, user, url);
 
-		if (method === 'GET' && p === '/')
-			return send(res, 200, marketingPage({ user, origin, demo: demoPr, caps, aiOn }));
+		if (method === 'GET' && p === '/') {
+			const reviews = user
+				? await previous(
+						'your reviews',
+						async () => {
+							await engines.flush(user.id);
+							return history.mine(user.id, { limit: 5 });
+						},
+						[]
+					)
+				: [];
+			return send(res, 200, marketingPage({ user, origin, demo: demoPr, caps, aiOn, reviews }));
+		}
 		if (method === 'GET' && p === '/go') {
 			const at = parsePrInput(url.searchParams.get('url') ?? '', host);
 			return at

@@ -218,11 +218,38 @@ describe('the site', dbOptions(), () => {
 		const html = await res.text();
 		assert.match(html, /PR review for <span class="hl">humans<\/span>/);
 		assert.match(res.headers.get('content-security-policy'), /script-src 'self'/);
+		assert.match(res.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+		assert.match(
+			html,
+			/<video src="\/static\/home-demo\.mp4"[^>]* autoplay muted loop playsinline/
+		);
+		for (const shot of ['overview', 'change', 'file', 'files', 'finish'])
+			assert.match(html, new RegExp(`src="/static/home-${shot}\\.png"`));
+		assert.ok(!/id="mine-h"/.test(html), 'nobody signed in, so no reviews of theirs');
 		assert.equal((await get('/healthz')).status, 200);
 		assert.equal((await get('/readyz')).status, 200);
 		assert.equal((await get('/ui/index.js')).status, 200);
 		assert.equal((await get('/ui/../package.json')).status, 404);
 		assert.equal((await get('/static/%2e%2e%2fpackage.json')).status, 404);
+	});
+
+	it('serves the demo video in byte ranges, as Safari asks for it', async () => {
+		const whole = await get('/static/home-demo.mp4');
+		assert.equal(whole.status, 200);
+		assert.equal(whole.headers.get('content-type'), 'video/mp4');
+		assert.equal(whole.headers.get('accept-ranges'), 'bytes');
+		const size = (await whole.arrayBuffer()).byteLength;
+		assert.equal(Number(whole.headers.get('content-length')), size);
+		const first = await get('/static/home-demo.mp4', { headers: { range: 'bytes=0-1' } });
+		assert.equal(first.status, 206);
+		assert.equal(first.headers.get('content-range'), `bytes 0-1/${size}`);
+		assert.equal((await first.arrayBuffer()).byteLength, 2);
+		const tail = await get('/static/home-demo.mp4', { headers: { range: 'bytes=-10' } });
+		assert.equal(tail.headers.get('content-range'), `bytes ${size - 10}-${size - 1}/${size}`);
+		assert.equal((await tail.arrayBuffer()).byteLength, 10);
+		const past = await get('/static/home-demo.mp4', { headers: { range: `bytes=${size}-` } });
+		assert.equal(past.status, 416);
+		assert.equal(past.headers.get('content-range'), `bytes */${size}`);
 	});
 
 	it('swaps a pasted github.com URL for the page here', async () => {
@@ -241,7 +268,12 @@ describe('the site', dbOptions(), () => {
 		const html = await res.text();
 		assert.match(html, /Teach the engine new tricks/);
 		assert.match(html, /Read first<\/span> 1 stop, 2 files/);
-		assert.match(html, /Sign in to review →/);
+		// The guided review's call to action comes first, above the PR's details, and says it needs sign-in.
+		const cta = html.indexOf('Review it with a second pair of eyes');
+		assert.ok(cta > 0 && cta < html.indexOf('<h2>Description</h2>'));
+		assert.match(html, /href="\/signin\?next=%2Fo%2Fr%2Fpull%2F7%2Freview">Sign in to review →/);
+		assert.match(html, /Reviewing needs you to sign in/);
+		assert.match(html, /Reviews posted from here/);
 		assert.equal(provider.calls.length, before, 'the basics never call the model');
 		const missing = await get('/o/r/pull/8');
 		assert.equal(missing.status, 404);
@@ -468,6 +500,37 @@ describe('the site', dbOptions(), () => {
 			(await db.query('SELECT 1 FROM user_github_tokens WHERE user_id = $1', [user])).rowCount,
 			0
 		);
+	});
+
+	it('shows the reviews already done: yours, and the ones posted from here', async () => {
+		const cookie = await signIn('second', '/');
+		// The posted review reaches Postgres a moment after it's posted.
+		await new Promise((r) => setTimeout(r, 1000));
+		// Anyone sees a review posted to GitHub from here, with who posted it, its verdict and a link.
+		const pr = await (await get('/o/r/pull/7')).text();
+		assert.match(pr, /<b>octo-second<\/b> <span class="posted COMMENT">Commented<\/span>/);
+		assert.match(pr, /href="https:\/\/github\.com\/o\/r\/pull\/7#pullrequestreview-1"/);
+		assert.ok(!/Your review/.test(pr));
+		// Its reviewer sees their own review too, and goes back to it from the top of the page.
+		const mine = await (await get('/o/r/pull/7', { headers: { cookie } })).text();
+		assert.match(mine, /<b>Your review:<\/b> 0 of \d+ changes? decided/);
+		assert.match(mine, /href="\/o\/r\/pull\/7\/review">Open your review →/);
+		// Someone else who hasn't reviewed it (any more) starts one.
+		const first = await signIn('first', '/');
+		await get('/account/forget', { method: 'POST', headers: { origin: ORIGIN, cookie: first } });
+		const theirs = await (await get('/o/r/pull/7', { headers: { cookie: first } })).text();
+		assert.match(theirs, /Start the guided review →/);
+		// Home and the account page list your reviews, each linking back to it.
+		const home = await (await get('/', { headers: { cookie } })).text();
+		assert.match(home, /id="mine-h">Your reviews/);
+		assert.match(
+			home,
+			/class="rv-title" href="\/o\/r\/pull\/7\/review">Teach the engine new tricks/
+		);
+		const account = await (await get('/account', { headers: { cookie } })).text();
+		assert.match(account, /id="reviews"/);
+		assert.match(account, /href="\/o\/r\/pull\/7\/review"/);
+		assert.match(account, /Commented<\/span>/);
 	});
 
 	it('keeps a user’s own key sealed, and reviews with it unmetered', async () => {
